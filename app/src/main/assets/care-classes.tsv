@@ -1,0 +1,14 @@
+30C	0	最高 30°C
+40C	0	最高 40°C
+DN_bleach	1	不可漂白
+DN_dry_clean	4	不可干洗
+DN_iron	3	不可熨烫
+DN_tumble_dry	2	不可滚筒烘干
+DN_wash	0	不可水洗
+hand_wash	0	手洗
+iron_low	3	低温熨烫 · 一点
+iron_medium	3	中温熨烫 · 两点	manual
+non_chlorine_bleach	1	仅氧漂	manual
+normal_dry_clean_solvents	4	专业干洗 · P
+tumble_dry_low	2	低温滚筒烘干
+tumble_dry_medium	2	中温滚筒烘干	manual

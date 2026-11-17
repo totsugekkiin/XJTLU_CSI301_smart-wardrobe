@@ -1,0 +1,30 @@
+wash-do-not	0	不可水洗
+wash-gentle-30	0	最高 30°C · 柔洗
+wash-gentle-40	0	最高 40°C · 柔洗
+wash-hand	0	手洗
+wash-normal-30	0	最高 30°C
+wash-normal-40	0	最高 40°C
+wash-normal-50	0	最高 50°C
+wash-normal-60	0	最高 60°C
+wash-normal-70	0	最高 70°C
+wash-normal-95	0	最高 95°C
+wash-very-gentle-30	0	最高 30°C · 极柔洗
+wash-very-gentle-40	0	最高 40°C · 极柔洗
+bleach-any	1	可漂白
+bleach-do-not	1	不可漂白
+bleach-non-chlorine	1	仅氧漂
+dry-drip	2	滴水悬挂晾干
+dry-flat	2	平铺晾干
+dry-line	2	悬挂晾干
+dry-tumble-do-not	2	不可滚筒烘干
+dry-tumble-normal-high	2	高温滚筒烘干
+dry-tumble-normal-low	2	低温滚筒烘干
+dry-tumble-normal-medium	2	中温滚筒烘干
+iron-do-not	3	不可熨烫
+iron-high	3	高温熨烫 · 三点
+iron-low	3	低温熨烫 · 一点
+iron-medium	3	中温熨烫 · 两点
+dryclean-any	4	专业干洗 · A
+dryclean-do-not	4	不可干洗
+dryclean-fluorocarbon	4	专业干洗 · F
+dryclean-petroleum	4	专业干洗 · P

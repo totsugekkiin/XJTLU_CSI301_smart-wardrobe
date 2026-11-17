@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Iron body -->
+  <path d="M12 38 L12 24 L42 24 L54 38 Z" />
+  <!-- Handle -->
+  <path d="M16 24 L16 18 L36 18 L36 24" />
+  <!-- Three dots (high heat) -->
+  <circle cx="22" cy="31" r="2.5" fill="#000" stroke="none" />
+  <circle cx="32" cy="31" r="2.5" fill="#000" stroke="none" />
+  <circle cx="42" cy="31" r="2.5" fill="#000" stroke="none" />
+</svg>

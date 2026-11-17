@@ -1,0 +1,22 @@
+.gradle/
+**/build/
+local.properties
+*.iml
+.idea/
+
+# Local credentials, builds and experiment data
+.env
+.env.*
+*.jks
+*.keystore
+*.apk
+*.aab
+*.log
+*.db
+*.sqlite*
+__pycache__/
+/link-import-probe/
+
+# Optional model weights are supplied locally
+*.onnx
+*.pt

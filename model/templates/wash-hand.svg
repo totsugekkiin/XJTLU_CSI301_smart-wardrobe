@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Tub -->
+  <path d="M12 28 L12 46 Q12 54 20 54 L44 54 Q52 54 52 46 L52 28" />
+  <!-- Water line -->
+  <path d="M12 28 Q18 24 24 28 Q30 32 36 28 Q42 24 48 28 L52 28" />
+  <!-- Hand silhouette -->
+  <path d="M28 26 L28 14 M32 24 L32 10 M36 24 L36 14 M40 26 L40 18" />
+  <path d="M24 26 Q24 20 28 14" />
+</svg>
