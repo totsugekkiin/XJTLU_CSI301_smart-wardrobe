@@ -19,7 +19,7 @@ Smart Wardrobe 是一款原生 Android 智能衣橱，目前版本为 0.6.14。�
 - 调试 APK 支持 arm64-v8a 和 x86_64，最低 Android 9（API 28）。
 - Android Studio 打开此目录后同步 Gradle。构建环境为 JDK 17 或以上、Android SDK Platform 36 和 Gradle 9.4.1。Windows 可运行 `gradlew.bat :app:assembleDebug`，APK 在 `app/build/outputs/apk/debug/`。
 - Windows 上如果 Android Gradle Plugin 拒绝含中文的目录，请将仓库克隆到仅含 ASCII 字符的路径。首次构建需要下载 Gradle 和 Maven 依赖。
-- 公开源码可以直接构建，手动建档、洗护记录、穿搭、日历和 ML Kit OCR 无需本地 ONNX 权重。自动服装分割与分类、洗标图形检测需要分别将具有适用授权且符合下表规格的 `garment.onnx`、`care-yolo11m.onnx` 放到 `app/src/main/assets/`，再重新构建。本仓库不分发这两份权重。
+- 公开源码可以直接构建，手动建档、洗护记录、穿搭、日历和 ML Kit OCR 无需本地 ONNX 权重。自动服装分割与分类、洗标图形检测需要分别将具有适用授权且与应用兼容的 `garment.onnx`、`care-yolo11m.onnx` 放到 `app/src/main/assets/`，再重新构建。本仓库不分发这两份权重。
 
 ## 操作路线
 
@@ -29,20 +29,3 @@ Smart Wardrobe 是一款原生 Android 智能衣橱，目前版本为 0.6.14。�
 4. 「洗护 → 换季检查」选择季节即可查看当季衣物的就绪情况。未标季节的衣物参与每一季的检查。衣物可同时出现在「待洗」和「尚未重新启用」，汇总中的「洁净未启用」只计洁净的存放衣物。重新启用时可选择确认可用或标为待洗。
 5. 「衣物档案 → 找颜色搭配」可按色块和类别找单品。色盘显示衣橱全部已记录颜色，同色系、邻近色、互补色和中性色规则会匹配衣橱中的颜色。编辑衣物时点击颜色或「添加颜色」，可从原图或处理图点按、拖动取色，再用滑杆调整所选颜色。
 6. 「穿搭」画布可拖动、缩放、替换、移除和调整图层。「添加单品」和「替换」可用圆盘色盘按颜色找衣物。面板显示画布已有单品与主色，选中颜色后显示匹配数量和配色关系。也可以切换至「全部单品」选择未填颜色的衣物。点击「记到日历」并确认实际穿着日期，才会更新关联衣物的使用次数与最近穿着时间。
-
-## 模型与验证范围
-
-| 模块 | 当前实现 |
-|---|---|
-| 服装分割与分类 | 服装实验目录的 `best.onnx`，ONNX Runtime Android 1.23.2，CPU，416 × 416，13 个模型类别映射到中文粗类 |
-| 颜色 | Java Lab 聚类，优先采样单件衣物分割区域的内部。按常见颜色初始化聚类，降低明暗变化的影响，采用中位色并过滤少量离群色。分割失败时尝试分离单色背景。用户可框选或从照片取色，再微调颜色和编辑占比、主辅色。 |
-| 中英文 OCR | ML Kit `com.google.mlkit:text-recognition-chinese:16.0.1` 捆绑版本 |
-| 洗护图形 | 用户提供的 YOLO11m Detect 权重 `care-yolo.pt`，ONNX Runtime Android 1.23.2，CPU。转灰度、保持比例缩小、居中黑边补到 640 × 640，置信度 0.60，App 提供 11 类自动候选。见 `model/README.md` |
-
-服装权重 SHA-256 为 `485bc106721febbd82fe24297e12a9fb49a435a552afff1e6b76308716555f76`，文件大小 10,994,299 字节。ONNX 元数据标记 YOLO26n-seg、Ultralytics 8.4.96、AGPL-3.0。规格记载的发布页标记 YOLO26s-seg 和 Apache-2.0。正式发布前须按规格确认该权重的版本和授权，或换用授权清晰的权重。
-
-Mate 60 上的相机、首次飞行模式及内存和 P50/P95 推理耗时仍待真机验收。服装准确率仍需用规格要求的 50 张团队实拍照片评估。
-
-调试版在 Android 13（API 33、x86_64）模拟器上首次安装前已开启飞行模式。两张服装样图取自 [DeepFashion2 示例](https://github.com/switchablenorms/DeepFashion2/blob/master/images/pair.jpg)，另用一张合成文字图验证商品字段和洗标 OCR。已核对透明 PNG、颜色占比、洗涤后出现的护理提醒、换季中同时保留的待洗与存放状态，以及穿搭图层和日历关联的 SQLite 记录。只保存穿搭时，日历表保持为空。
-
-文字识别的捆绑方式见 [Google ML Kit Android 说明](https://developers.google.com/ml-kit/vision/text-recognition/v2/android?hl=zh-cn)。
