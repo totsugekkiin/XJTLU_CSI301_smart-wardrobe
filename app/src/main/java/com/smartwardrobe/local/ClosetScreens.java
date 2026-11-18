@@ -3,6 +3,7 @@ package com.smartwardrobe.local;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Point;
+import android.net.Uri;
 import android.text.InputFilter;
 import android.util.Log;
 import android.view.Gravity;
@@ -30,7 +31,7 @@ import static com.smartwardrobe.local.MainActivity.*;
 final class ClosetScreens {
     private final MainActivity ui;
     private final WardrobeStore db;
-    private String filterType = "", filterColor = "";
+    private GarmentPicker.Filter filter = GarmentPicker.Filter.ALL;
     private int filterSeason = -1;
     private boolean favorites;
     private int currentSeason;
@@ -58,50 +59,70 @@ final class ClosetScreens {
         List<WardrobeStore.Garment> garments = db.garments();
         List<WardrobeStore.Garment> filtered = new ArrayList<>();
         for (WardrobeStore.Garment g : garments) {
-            if (!filterType.isEmpty() && !g.type.equals(filterType)) continue;
+            if (!filter.matches(g)) continue;
             if (filterSeason >= 0 && (g.seasons & (1 << filterSeason)) == 0) continue;
             if (favorites && !g.favorite) continue;
-            if (!filterColor.isEmpty() && g.colors.stream().noneMatch(s -> s.name.equals(filterColor))) continue;
             filtered.add(g);
         }
         String count = garments.isEmpty() ? "" : String.format(Locale.ROOT, "%02d / %02d", filtered.size(), garments.size());
-        ui.page("衣橱", count, null, "＋ 添加", this::newGarment);
-        ui.body.addView(ui.ghost("已归档衣物", this::archive));
+        ui.page("closet", "衣橱", count, null, "＋ 添加", this::newGarment);
         if (garments.isEmpty()) {
+            LinearLayout.LayoutParams archiveSize = new LinearLayout.LayoutParams(ui.dp(48), ui.dp(48));
+            archiveSize.gravity = Gravity.END;
+            ui.body.addView(archiveButton(), archiveSize);
             LinearLayout panel = ui.card(ui.body);
             TextView intro = ui.text("衣橱暂无单品", 23, INK, true);
             panel.addView(intro);
             ui.gap(panel, 13);
-            ui.actions(panel, new String[]{"导入照片", "拍照"}, () -> pickNew("photo"), () -> pickNew("camera"));
-            ui.actions(panel, new String[]{"网购截图", "手动建档"}, () -> pickNew("shop"), () -> editor(new WardrobeStore.Garment(), this::home));
+            showAddOptions(panel, () -> {});
             return;
         }
 
-        LinearLayout filters = ui.row();
-        filters.setGravity(Gravity.CENTER_VERTICAL);
-        TextView category = ui.ghost(filterType.isEmpty() ? "☷ 类别" : filterType, () -> ui.choose("筛选",
-                new String[]{"类别", "颜色", "清除筛选"}, i -> {
-                    if (i == 0) selectType("全部类别", type -> { filterType = type; home(); });
-                    else if (i == 1) chooseColor(garments);
-                    else { filterType = ""; filterColor = ""; filterSeason = -1; favorites = false; home(); }
-                }));
+        List<WardrobeStore.Garment> available = new ArrayList<>(garments);
+        available.removeIf(g -> filterSeason >= 0 && (g.seasons & (1 << filterSeason)) == 0 || favorites && !g.favorite);
+        TextView category = ui.ghost(filter.equals(GarmentPicker.Filter.ALL) ? "筛选" : "已筛选", () ->
+                GarmentPicker.open(ui, "筛选衣橱", available, filter,
+                        chosen -> { filter = chosen; home(); },
+                        (chosen, items) -> { filter = chosen; detail(items.get(0).id, this::home); }, false));
         category.setTextSize(12);
-        filters.addView(category);
+        category.setPadding(0, 0, 0, 0);
+
+        LinearLayout seasons = ui.row();
+        seasons.setMinimumWidth(ui.dp(348));
+        seasons.setGravity(Gravity.CENTER_VERTICAL);
+        seasons.setBaselineAligned(false);
+        seasons.addView(category, new LinearLayout.LayoutParams(ui.dp(48), -2));
         for (int i = 0; i < SEASONS.length; i++) {
             int index = i;
             TextView season = ui.ghost(SEASONS[i], () -> { filterSeason = filterSeason == index ? -1 : index; home(); });
             season.setPadding(0, 0, 0, 0);
-            season.setTextSize(12);
             season.setSelected(filterSeason == i);
             if (filterSeason == i) season.setBackground(ui.shape(SAND, 2, STROKE));
-            filters.addView(season, new LinearLayout.LayoutParams(0, -2, 1));
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, -2, 1);
+            params.setMarginStart(ui.dp(2));
+            seasons.addView(season, params);
         }
-        TextView liked = ui.ghost(favorites ? "♥ 仅收藏" : "♡ 仅收藏", () -> { favorites = !favorites; home(); });
-        liked.setTextSize(12);
-        filters.addView(liked);
-        ui.body.addView(filters);
+        View liked = iconButton(NavIcon.FAVORITE, favorites, "仅收藏", () -> { favorites = !favorites; home(); });
+        liked.setSelected(favorites);
+        ui.space(seasons, 2);
+        seasons.addView(liked, new LinearLayout.LayoutParams(ui.dp(48), ui.dp(48)));
+        ui.space(seasons, 2);
+        seasons.addView(archiveButton(), new LinearLayout.LayoutParams(ui.dp(48), ui.dp(48)));
+        android.widget.HorizontalScrollView seasonStrip = new android.widget.HorizontalScrollView(ui);
+        seasonStrip.setFillViewport(true);
+        seasonStrip.setHorizontalScrollBarEnabled(false);
+        seasonStrip.addView(seasons);
+        LinearLayout.LayoutParams stripSize = new LinearLayout.LayoutParams(-1, -2);
+        stripSize.setMarginStart(-ui.dp(14));
+        stripSize.setMarginEnd(-ui.dp(14));
+        ui.body.addView(seasonStrip, stripSize);
+        ui.gap(ui.body, 10);
         ui.rule(ui.body);
-        if (!filterColor.isEmpty()) ui.body.addView(ui.ghost(filterColor + " ×", () -> { filterColor = ""; home(); }));
+        if (!filter.equals(GarmentPicker.Filter.ALL)) {
+            String summary = String.join(" · ", java.util.stream.Stream.of(filter.query(), filter.type(), filter.color())
+                    .filter(value -> !value.isEmpty()).collect(java.util.stream.Collectors.toList()));
+            ui.body.addView(ui.ghost(summary + " ×", () -> { filter = GarmentPicker.Filter.ALL; home(); }));
+        }
         ui.gap(ui.body, 20);
         if (filtered.isEmpty()) ui.empty(ui.body, "没有匹配的衣物", "");
         for (int i = 0; i < filtered.size(); i += 2) {
@@ -116,13 +137,16 @@ final class ClosetScreens {
                 FrameLayout photo = new FrameLayout(ui);
                 int width = ui.getResources().getConfiguration().screenWidthDp;
                 int height = Math.max(146, (Math.min(width, 620) - 56) * 2 / 3);
-                Bitmap bitmap = db.image(g.photo, 2);
-                photo.addView(ui.image(bitmap, height), new FrameLayout.LayoutParams(-1, -1));
-                if (bitmap == null) photo.addView(new NavIcon(ui, 0, false), new FrameLayout.LayoutParams(ui.dp(30), ui.dp(30), Gravity.CENTER));
-                TextView favorite = ui.text(g.favorite ? "♥" : "♡", 21, INK, true);
-                favorite.setGravity(Gravity.CENTER);
-                favorite.setContentDescription(g.favorite ? "取消收藏 " + g.name : "收藏 " + g.name);
-                favorite.setOnClickListener(v -> { db.state(g.id, "favorite", !g.favorite); home(); });
+                ImageView thumbnail = ui.image(null, height);
+                photo.addView(thumbnail, new FrameLayout.LayoutParams(-1, -1));
+                View placeholder = new NavIcon(ui, 0, false);
+                photo.addView(placeholder, new FrameLayout.LayoutParams(ui.dp(30), ui.dp(30), Gravity.CENTER));
+                ui.loadPhoto(thumbnail, g.photo, 2, bitmap -> {
+                    thumbnail.setImageBitmap(bitmap);
+                    placeholder.setVisibility(View.GONE);
+                });
+                View favorite = iconButton(NavIcon.FAVORITE, g.favorite, (g.favorite ? "取消收藏 " : "收藏 ") + g.name,
+                        () -> { db.state(g.id, "favorite", !g.favorite); home(); });
                 photo.addView(favorite, new FrameLayout.LayoutParams(ui.dp(48), ui.dp(48), Gravity.END | Gravity.TOP));
                 card.addView(photo, new LinearLayout.LayoutParams(-1, ui.dp(height)));
                 ui.gap(card, 6);
@@ -159,19 +183,6 @@ final class ClosetScreens {
         }
     }
 
-    private void chooseColor(List<WardrobeStore.Garment> garments) {
-        Map<String, Integer> colors = new LinkedHashMap<>();
-        for (WardrobeStore.Garment g : garments) for (WardrobeStore.Swatch color : g.colors) {
-            colors.putIfAbsent(color.name, color.rgb);
-        }
-        Sheet sheet = new Sheet(ui, "按颜色筛选", true);
-        sheet.option("全部颜色", () -> { filterColor = ""; sheet.dismiss(); home(); });
-        colors.forEach((name, rgb) -> {
-            sheet.option(name, rgb, () -> { filterColor = name; sheet.dismiss(); home(); });
-        });
-        sheet.show();
-    }
-
     void selectType(String first, Consumer<String> result) {
         List<String> choices = new ArrayList<>(Arrays.asList(TYPES));
         if (first != null) choices.add(0, first);
@@ -180,11 +191,81 @@ final class ClosetScreens {
     }
 
     private void newGarment() {
-        ui.choose("添加衣物", new String[]{"拍摄实物", "导入衣物照片", "网购截图 / 参数表", "从淘宝导入", "手动建档"}, index -> {
-            if (index == 3) new TaobaoImport(ui, this::importTaobao).start();
-            else if (index == 4) editor(new WardrobeStore.Garment(), this::home);
-            else pickNew(new String[]{"camera", "photo", "shop"}[index]);
-        });
+        Sheet sheet = new Sheet(ui, "添加衣物", true);
+        showAddOptions(sheet.content, sheet::dismiss);
+        sheet.show();
+    }
+
+    private void showAddOptions(LinearLayout parent, Runnable dismiss) {
+        parent.addView(ui.pill("拍照 / 选图", true, () -> {
+            dismiss.run();
+            ui.choose("选择衣物照片", new String[]{"拍照", "从相册选图"}, index -> pickNew(index == 0 ? "camera" : "photo"));
+        }));
+        parent.addView(ui.pill("批量导入照片", false, () -> {
+            dismiss.run();
+            ui.requestBatchImages();
+        }));
+        parent.addView(ui.pill("网购导入", false, () -> {
+            dismiss.run();
+            new TaobaoImport(ui, this::importTaobao, () -> pickNew("shop")).start();
+        }));
+        parent.addView(ui.ghost("手动建档", () -> {
+            dismiss.run();
+            editor(new WardrobeStore.Garment(), this::home);
+        }));
+    }
+
+    void confirmBatchImport(List<Uri> images) {
+        ui.prompt("批量导入 " + images.size() + " 张照片",
+                "每张照片建立一件衣物，自动识别类别和颜色。未检测到衣物时保留原图，可入库后编辑。",
+                "开始导入", () -> ui.task("正在处理 " + images.size() + " 张照片…",
+                        () -> importBatch(images), message -> {
+                            home();
+                            Sheet summary = new Sheet(ui, "批量导入结果", true);
+                            summary.description(message);
+                            summary.button("完成", true, summary::dismiss);
+                            summary.show();
+                        }));
+    }
+
+    private String importBatch(List<Uri> images) {
+        List<String> failed = new ArrayList<>();
+        int originalCount = 0;
+        for (int i = 0; i < images.size(); i++) {
+            Bitmap original = null;
+            Bitmap cutout = null;
+            try {
+                original = ImageAnalysis.decode(ui, images.get(i));
+                ImageAnalysis.Detection found = detectGarment(original);
+                WardrobeStore.Garment garment = new WardrobeStore.Garment();
+                Point origin = null;
+                if (found != null) {
+                    garment.type = found.type();
+                    cutout = found.image();
+                    origin = new Point(found.left(), found.top());
+                }
+                if (garment.type.isEmpty()) garment.type = "其他";
+                garment.name = (found == null ? "待整理衣物" : garment.type) + " " + (i + 1);
+                garment.colors = ui.colorReader.read(cutout == null ? original : cutout, found != null, false);
+                db.save(garment, original, cutout, origin, cutout == null);
+                if (found == null) originalCount++;
+            } catch (Exception | LinkageError e) {
+                Log.w("SmartWardrobe", "Batch import image " + (i + 1), e);
+                failed.add(Integer.toString(i + 1));
+            } finally {
+                if (cutout != null && cutout != original) cutout.recycle();
+                if (original != null) original.recycle();
+            }
+        }
+        String message = "已导入 " + (images.size() - failed.size()) + " / " + images.size() + " 张";
+        if (originalCount > 0) message += "，其中 " + originalCount + " 张使用原图封面";
+        if (!failed.isEmpty()) message += "。未导入的照片序号（按选择结果排列）：" + String.join("、", failed);
+        return message;
+    }
+
+    private ImageAnalysis.Detection detectGarment(Bitmap image) {
+        try { return ui.garmentDetector.detect(image); }
+        catch (Exception | LinkageError e) { Log.w("SmartWardrobe", "Garment detection", e); return null; }
     }
 
     private void importTaobao(TaobaoImport.Result result) {
@@ -202,23 +283,43 @@ final class ClosetScreens {
             WardrobeStore.Garment g = id == 0 ? new WardrobeStore.Garment() : db.garment(id);
             if (g == null) return;
             Runnable back = id == 0 ? this::home : () -> detail(id, this::home);
-            Editor form = editor(g, back);
-            if (purpose.equals("label")) form.scanLabel(bitmap);
-            else form.useImage(bitmap, purpose.equals("shop"));
+            if (purpose.equals("label") || purpose.equals("label-detail")) {
+                restoreCareScan(id, purpose.equals("label-detail")).accept(bitmap, null);
+            } else if (purpose.startsWith("edit-")) {
+                Editor photo = new Editor(g, back);
+                photo.renderPhotoEditor();
+                photo.useImage(bitmap, false);
+            } else editor(g, back).useImage(bitmap, purpose.equals("shop"));
         };
     }
 
-    java.util.function.BiConsumer<Bitmap, List<ImageAnalysis.SymbolHit>> restoreCareScan(long id) {
+    java.util.function.BiConsumer<Bitmap, List<ImageAnalysis.SymbolHit>> restoreCareScan(long id, boolean direct) {
         return (image, hits) -> {
             WardrobeStore.Garment g = id == 0 ? new WardrobeStore.Garment() : db.garment(id);
             if (g == null) return;
-            Editor form = editor(g, id == 0 ? this::home : () -> detail(id, this::home));
+            Runnable back = id == 0 ? this::home : () -> detail(id, this::home);
+            Editor form = direct ? new Editor(g, back) : editor(g, back);
+            form.saveLabelDirectly = direct;
+            if (direct) back.run();
             form.scanLabel(image, "", hits);
         };
     }
 
+    private View archiveButton() {
+        return iconButton(NavIcon.ARCHIVE, true, "已归档衣物", this::archive);
+    }
+
+    private View iconButton(int icon, boolean active, String label, Runnable action) {
+        FrameLayout button = new FrameLayout(ui);
+        button.setContentDescription(label);
+        button.addView(new NavIcon(ui, icon, active),
+                new FrameLayout.LayoutParams(ui.dp(22), ui.dp(22), Gravity.CENTER));
+        ui.click(button, PAPER, 8, 0, action);
+        return button;
+    }
+
     private void archive() {
-        ui.page("已归档衣物", "", this::home, null, null);
+        ui.page("archive", "已归档衣物", "", this::home, null, null);
         List<WardrobeStore.Garment> archived = db.garments(true);
         if (archived.isEmpty()) ui.empty(ui.body, "暂无已归档衣物", "");
         for (var garment : archived) {
@@ -239,12 +340,26 @@ final class ClosetScreens {
         if (g == null) { back.run(); return; }
         WardrobeStore.Usage usage = db.usage(id);
         Runnable refresh = () -> detail(id, back, original);
-        ui.page("", "", back, "编辑", () -> editor(g, refresh));
+        WearStatus status = wearStatus(g, usage);
+        Runnable next = switch (status) {
+            case ARCHIVED -> () -> { db.archiveGarment(id, false); back.run(); };
+            case STORED -> () -> takeOut(g, refresh);
+            case DIRTY -> () -> recordWash(g, refresh);
+            case CARE -> () -> completeCare(g, refresh);
+            case READY -> () -> { db.state(id, "dirty", true); refresh.run(); };
+        };
+        ui.page("garment:" + id, "衣物详情", "", back, status.action, next);
+        TextView badge = ui.text(status.label, 14, INK, true);
+        badge.setBackground(ui.shape(SAND, 12, 0));
+        badge.setPadding(ui.dp(10), ui.dp(4), ui.dp(10), ui.dp(4));
+        ui.body.addView(badge, new LinearLayout.LayoutParams(-2, -2));
+        ui.gap(ui.body, 8);
         if (!g.photo.isEmpty()) {
             LinearLayout image = ui.card(ui.body);
-            image.addView(ui.image(db.image(original ? g.original : g.photo, 1), 350));
-            if (!g.photo.equals(g.original) && !g.original.isEmpty()) tabs(ui.body, "看处理图", "看原图", original,
-                    () -> detail(id, back, false), () -> detail(id, back, true));
+            String alternate = g.photo.equals(g.original) ? g.processed : g.original;
+            image.addView(ui.photo(original && !alternate.isEmpty() ? alternate : g.photo, 1, 350));
+            if (!alternate.isEmpty()) tabs(ui.body, "封面", g.photo.equals(g.original) ? "看处理图" : "看原图",
+                    original, () -> detail(id, back, false), () -> detail(id, back, true));
             ui.gap(ui.body, 14);
         }
         if (!g.brand.isEmpty()) ui.body.addView(ui.text(g.brand, 12, MUTED, false));
@@ -253,27 +368,18 @@ final class ClosetScreens {
                 + (g.fabric.isEmpty() ? "" : " · " + g.fabric), 12, MUTED, false));
         colorNames(ui.body, g.colors);
         ui.gap(ui.body, 12);
-        if (g.archived) {
-            ui.body.addView(ui.pill("恢复到衣橱", true, () -> {
-                db.archiveGarment(id, false);
-                back.run();
-            }));
-        } else ui.actions(ui.body, new String[]{"记录洗涤", "找颜色搭配", "扫描洗标"},
-                () -> recordWash(g, refresh), () -> ui.outfits.palette(g, refresh), () -> editor(g, refresh).labelSource());
-        LinearLayout facts = ui.card(ui.body);
-        facts.addView(ui.text("清洁  " + (g.dirty ? "待洗" : "可使用") + "    存放  " + (g.stored ? "季节性存放" : "使用中"), 14, INK, true));
-        ui.gap(facts, 8);
-        if (!g.archived) ui.actions(facts, new String[]{g.dirty ? "标为洁净" : "标为待洗", g.stored ? "重新启用" : "季节性存放"},
-                () -> { db.state(id, "dirty", !g.dirty); refresh.run(); },
-                () -> {
-                    if (g.stored) ui.choose("检查是否有灰尘、异味或污渍", new String[]{"检查后确认可用", "启用并标为待洗"},
-                            i -> { db.reactivate(id, i == 1); refresh.run(); });
-                    else { db.state(id, "stored", true); refresh.run(); }
-                });
-        facts.addView(ui.ghost(g.favorite ? "♥ 取消收藏" : "♡ 收藏", () -> {
+        LinearLayout actions = ui.row();
+        actions.addView(ui.ghost("编辑", () -> editor(g, refresh)));
+        if (!g.archived) {
+            ui.space(actions, 12);
+            actions.addView(ui.ghost("更多操作", () -> garmentActions(g, refresh)));
+        }
+        ui.space(actions, 12);
+        actions.addView(ui.ghost(g.favorite ? "取消收藏" : "收藏", () -> {
             db.state(id, "favorite", !g.favorite);
             refresh.run();
         }));
+        ui.body.addView(actions);
 
         ui.section(ui.body, "洗护与使用记录");
         LinearLayout records = ui.card(ui.body);
@@ -283,8 +389,7 @@ final class ClosetScreens {
         if (!g.care.isEmpty()) records.addView(ui.text(g.care, 14, INK, false));
         ui.gap(records, 8);
         ui.actions(records, new String[]{"查看洗涤历史", "护理记录"}, () -> washHistory(g), () -> careHistory(g));
-        String reminder = reminder(g, usage);
-        if (!g.archived && !reminder.isEmpty()) reminderCard(ui.body, g, reminder, refresh);
+        if (status == WearStatus.CARE) records.addView(ui.text(reminder(g, usage), 14, MUTED, false));
 
         ui.gap(ui.body, 12);
         if (!g.archived) ui.body.addView(ui.pill("归档衣物", false, () -> {
@@ -292,11 +397,37 @@ final class ClosetScreens {
             ui.toast("已归档，可在衣橱恢复");
             back.run();
         }));
+        if (!g.archived && usage.worn() == 0) ui.gap(ui.body, 10);
         if (usage.worn() == 0) ui.body.addView(ui.destructiveButton("永久删除衣物", () -> ui.confirmDestructive("永久删除衣物",
                 "将移除照片、洗护记录及已保存穿搭中的该单品。", "永久删除", () -> {
                     if (db.deleteGarment(g)) back.run();
                     else ui.toast("这件衣物有穿着记录，可以归档");
                 })));
+    }
+
+    private void garmentActions(WardrobeStore.Garment g, Runnable refresh) {
+        Sheet sheet = new Sheet(ui, "衣物操作", true);
+        sheet.option("扫描洗标", () -> { sheet.dismiss(); new Editor(g, refresh).labelSource(true); });
+        sheet.option("修图", () -> { sheet.dismiss(); new Editor(g, refresh).renderPhotoEditor(); });
+        sheet.option("找颜色搭配", () -> { sheet.dismiss(); ui.outfits.palette(g, refresh); });
+        sheet.option("记录洗涤", () -> { sheet.dismiss(); recordWash(g, refresh); });
+        if (g.dirty) sheet.option("标为洁净", () -> {
+            sheet.dismiss();
+            db.state(g.id, "dirty", false);
+            refresh.run();
+        });
+        sheet.option(g.stored ? "取出衣物" : "收起衣物", () -> {
+            sheet.dismiss();
+            if (g.stored) takeOut(g, refresh);
+            else { db.state(g.id, "stored", true); refresh.run(); }
+        });
+        sheet.show();
+    }
+
+    private void takeOut(WardrobeStore.Garment g, Runnable refresh) {
+        db.state(g.id, "stored", false);
+        refresh.run();
+        ui.bottomNotice("已取出，可检查是否有灰尘、异味或污渍");
     }
 
     void care() {
@@ -345,14 +476,15 @@ final class ClosetScreens {
             ui.body.addView(header);
             ui.gap(ui.body, 5);
             ui.rule(ui.body);
-            for (var g : group.getValue()) careRow(g, g.type + (g.stored ? " · 存放中" : ""), "记录洗涤",
+            for (var g : group.getValue()) careRow(g, g.type, "记录洗涤",
                     () -> recordWash(g, this::care), this::care);
             ui.gap(ui.body, 16);
         }
         int reminders = 0;
         for (WardrobeStore.Garment g : garments) {
-            String reminder = reminder(g, db.usage(g.id));
-            if (reminder.isEmpty()) continue;
+            WardrobeStore.Usage usage = db.usage(g.id);
+            if (wearStatus(g, usage) != WearStatus.CARE) continue;
+            String reminder = reminder(g, usage);
             if (reminders++ == 0) ui.section(ui.body, "护理提醒");
             reminderCard(ui.body, g, reminder, this::care);
         }
@@ -375,7 +507,8 @@ final class ClosetScreens {
     }
 
     private void careHeader(long pending) {
-        ui.page("洗护", pending == 0 ? "" : pending + " 件待洗", null, null, null);
+        ui.page(seasonal ? "seasonal-care" : "wash-care", "洗护",
+                pending == 0 ? "" : pending + " 件待洗", null, null, null);
         tabs(ui.body, "待洗分组" + (pending == 0 ? "" : "  " + pending), "换季检查", seasonal,
                 () -> { seasonal = false; care(); }, () -> { seasonal = true; season(); });
         ui.gap(ui.body, 16);
@@ -420,7 +553,7 @@ final class ClosetScreens {
         line.setPadding(0, ui.dp(8), 0, ui.dp(8));
         LinearLayout item = ui.row();
         item.setGravity(Gravity.CENTER_VERTICAL);
-        item.addView(ui.image(db.image(g.photo, 4), 63), new LinearLayout.LayoutParams(ui.dp(48), ui.dp(63)));
+        item.addView(ui.photo(g.photo, 4, 63), new LinearLayout.LayoutParams(ui.dp(48), ui.dp(63)));
         ui.space(item, 10);
         LinearLayout text = ui.vertical();
         TextView name = ui.text(g.name, 14, INK, true);
@@ -442,6 +575,7 @@ final class ClosetScreens {
         washDate(g.name, (day, clean) -> {
             db.wash(g.id, day.toString(), clean);
             refresh.run();
+            if (clean && g.stored) ui.bottomNotice("已记下洗涤，衣物已从收纳中取出");
         });
     }
 
@@ -494,17 +628,20 @@ final class ClosetScreens {
 
     private void reminderCard(LinearLayout parent, WardrobeStore.Garment g, String note, Runnable refresh) {
         LinearLayout card = itemCard(parent, g, note, null);
-        card.addView(ui.pill("完成护理检查", false, () -> {
-            Sheet sheet = new Sheet(ui, "护理检查", true);
-            EditText input = ui.field(sheet.content, "检查结果", "", true, false);
-            sheet.button("保存", true, () -> {
-                String value = ui.value(input);
-                db.checked(g.id, value.isEmpty() ? "完成护理检查" : value);
-                sheet.dismiss();
-                refresh.run();
-            });
-            sheet.show();
-        }));
+        card.addView(ui.pill("完成护理检查", false, () -> completeCare(g, refresh)));
+    }
+
+    private void completeCare(WardrobeStore.Garment g, Runnable refresh) {
+        Sheet sheet = new Sheet(ui, "护理检查", true);
+        EditText input = ui.field(sheet.content, "检查结果", "", true, false);
+        sheet.button("完成护理", true, () -> {
+            String value = ui.value(input);
+            db.checked(g.id, value.isEmpty() ? "完成护理检查" : value);
+            sheet.dismiss();
+            refresh.run();
+            ui.toast("已完成护理，重新开始计数");
+        });
+        sheet.show();
     }
 
     void season() {
@@ -525,9 +662,9 @@ final class ClosetScreens {
         }
         ui.body.addView(seasons);
         ui.gap(ui.body, 20);
-        List<List<WardrobeStore.Garment>> groups = Arrays.asList(new ArrayList<>(), new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
+        Map<WearStatus, List<WardrobeStore.Garment>> groups = new java.util.EnumMap<>(WearStatus.class);
         List<WardrobeStore.Garment> untagged = new ArrayList<>();
-        int total = 0, storedClean = 0;
+        int total = 0;
         for (WardrobeStore.Garment g : garments) {
             if (g.seasons == 0) {
                 untagged.add(g);
@@ -535,28 +672,29 @@ final class ClosetScreens {
             }
             if ((g.seasons & (1 << currentSeason)) == 0) continue;
             total++;
-            boolean check = !reminder(g, db.usage(g.id)).isEmpty();
-            if (g.dirty) groups.get(1).add(g);
-            if (check) groups.get(2).add(g);
-            if (g.stored) groups.get(3).add(g);
-            if (g.stored && !g.dirty) storedClean++;
-            if (!g.dirty && !check && !g.stored) groups.get(0).add(g);
+            groups.computeIfAbsent(wearStatus(g, db.usage(g.id)), status -> new ArrayList<>()).add(g);
         }
-        int pending = groups.get(1).size();
+        int pending = groups.getOrDefault(WearStatus.DIRTY, Collections.emptyList()).size();
         String season = SEASONS[currentSeason] + "季";
-        seasonSummary(season, total, groups.get(0).size(), pending, storedClean);
+        seasonSummary(season, total, groups.getOrDefault(WearStatus.READY, Collections.emptyList()).size(), pending,
+                groups.getOrDefault(WearStatus.STORED, Collections.emptyList()).size());
         if (total == 0) ui.empty(ui.body, season + "暂无适用衣物", "");
-        String[] titles = {"洁净就绪（可直接穿）", "当季未洗（待清洗）", "需检查或护理", "尚未重新启用"};
-        for (int i : new int[]{1, 3, 2, 0}) {
-            List<WardrobeStore.Garment> group = groups.get(i);
+        for (WearStatus status : new WearStatus[]{WearStatus.DIRTY, WearStatus.STORED, WearStatus.CARE, WearStatus.READY}) {
+            List<WardrobeStore.Garment> group = groups.getOrDefault(status, Collections.emptyList());
             if (group.isEmpty()) continue;
-            ui.section(ui.body, titles[i] + "  " + group.size());
+            String title = switch (status) {
+                case READY -> "可直接穿";
+                case STORED -> "还在收纳中";
+                default -> status.label;
+            };
+            ui.section(ui.body, title + "  " + group.size());
             for (WardrobeStore.Garment g : group) {
-                String subtitle = (g.dirty ? "待洗" : "洁净") + " · " + (g.stored ? "存放中" : "使用中") + " · " + g.type;
-                if (i == 1) careRow(g, subtitle, "记录洗涤", () -> recordWash(g, this::season), this::season);
-                else if (i == 3) careRow(g, subtitle, "重新启用", () -> ui.choose("重新启用",
-                        new String[]{"确认可用", "启用并标为待洗"}, index -> { db.reactivate(g.id, index == 1); season(); }), this::season);
-                else careRow(g, subtitle, null, null, this::season);
+                switch (status) {
+                    case DIRTY -> careRow(g, g.type, "记录洗涤", () -> recordWash(g, this::season), this::season);
+                    case STORED -> careRow(g, g.type, "取出衣物", () -> takeOut(g, this::season), this::season);
+                    case CARE -> careRow(g, g.type, "完成护理检查", () -> completeCare(g, this::season), this::season);
+                    default -> careRow(g, g.type, null, null, this::season);
+                }
             }
         }
         if (!untagged.isEmpty()) {
@@ -595,15 +733,15 @@ final class ClosetScreens {
         sheet.show();
     }
 
-    private void seasonSummary(String season, int total, int ready, int pending, int storedClean) {
+    private void seasonSummary(String season, int total, int ready, int pending, int stored) {
         LinearLayout status = ui.card(ui.body);
         status.setBackground(ui.shape(SAND, 4, 0xffcccccc));
-        status.addView(ui.text(season + "就绪检查 · " + total + " 件", 12, MUTED, false));
+        status.addView(ui.text(season + "换季检查 · " + total + " 件", 12, MUTED, false));
         int percent = total == 0 ? 0 : Math.round(100f * ready / total);
         status.addView(ui.text("可直接穿 " + ready + " / " + total + " 件 · " + percent + "%", 15, INK, true));
         if (total == 0) return;
         ui.gap(status, 10);
-        int[] amounts = {ready, pending, storedClean, total - ready - pending - storedClean};
+        int[] amounts = {ready, pending, stored, total - ready - pending - stored};
         int[] shades = {INK, 0xff777777, 0xffc8c8c8, STROKE};
         LinearLayout bar = ui.row();
         bar.setWeightSum(total);
@@ -617,7 +755,7 @@ final class ClosetScreens {
         status.addView(bar, new LinearLayout.LayoutParams(-1, ui.dp(8)));
         ui.gap(status, 10);
         LinearLayout counts = ui.row();
-        String[] names = {"可直接穿", "当季未洗", "洁净未启用"};
+        String[] names = {"可直接穿", "待洗", "还在收纳中"};
         for (int i = 0; i < names.length; i++) {
             TextView count = ui.text(names[i] + "\n" + amounts[i] + " 件", 12, INK, true);
             count.setBackground(ui.shape(PAPER, 4, STROKE));
@@ -637,10 +775,9 @@ final class ClosetScreens {
         LinearLayout card = ui.card(parent);
         LinearLayout row = ui.row();
         row.setGravity(Gravity.CENTER_VERTICAL);
-        Bitmap bitmap = db.image(g.photo, 4);
-        ImageView thumb = ui.image(bitmap, 55);
+        ImageView thumb = ui.photo(g.photo, 4, 55);
         row.addView(thumb, new LinearLayout.LayoutParams(ui.dp(57), ui.dp(56)));
-        if (bitmap == null) thumb.setContentDescription("暂无衣物照片");
+        if (g.photo.isEmpty()) thumb.setContentDescription("暂无衣物照片");
         ui.space(row, 10);
         LinearLayout text = ui.vertical();
         text.addView(ui.text(g.name, 16, INK, true));
@@ -673,6 +810,28 @@ final class ClosetScreens {
 
     private String dateText(String date) { return date == null ? "暂无记录" : date; }
 
+    private enum WearStatus {
+        READY("可穿", "标为待洗"),
+        DIRTY("待洗", "记录洗涤"),
+        CARE("需护理", "完成护理检查"),
+        STORED("已收起", "取出衣物"),
+        ARCHIVED("已归档", "恢复到衣橱");
+
+        final String label, action;
+        WearStatus(String label, String action) {
+            this.label = label;
+            this.action = action;
+        }
+    }
+
+    private WearStatus wearStatus(WardrobeStore.Garment garment, WardrobeStore.Usage usage) {
+        if (garment.archived) return WearStatus.ARCHIVED;
+        if (garment.dirty) return WearStatus.DIRTY;
+        if (garment.stored) return WearStatus.STORED;
+        if (!reminder(garment, usage).isEmpty()) return WearStatus.CARE;
+        return WearStatus.READY;
+    }
+
     private Editor editor(WardrobeStore.Garment g, Runnable back) {
         Editor editor = new Editor(g, back);
         editor.render();
@@ -684,44 +843,24 @@ final class ClosetScreens {
         private final Runnable exit;
         private Bitmap imported, cutout, target;
         private Point cutoutOrigin;
-        private boolean originalSelected, colorCheck, useOriginalPhoto;
+        private boolean originalSelected, colorCheck, photoOnly, saveLabelDirectly;
         private EditText name, brand, fabric, care, wash, idle;
         private TextView kind, season, symbolSummary, sourceTextButton, labelTextButton, addPhoto, photoMode;
         private ImageView preview;
+        private TextView coverLabel;
         private LinearLayout colorBox, photoTools;
 
         Editor(WardrobeStore.Garment garment, Runnable back) {
             g = garment;
             exit = back;
             cutoutOrigin = g.cutoutOrigin;
+            originalSelected = g.photo.equals(g.original);
         }
 
         void render() {
-            ui.page(g.id == 0 ? "添加衣物" : "编辑衣物",
-                    "", () -> ui.confirmDestructive("退出编辑", "未保存的修改将丢失。", "放弃修改", exit), "保存", this::save);
-            ui.section(ui.body, "衣物照片");
-            LinearLayout photo = ui.vertical();
-            ui.body.addView(photo);
-            preview = ui.image(db.image(g.photo, 2), 290);
-            LinearLayout.LayoutParams photoSize = new LinearLayout.LayoutParams(-1, ui.dp(290));
-            photoSize.leftMargin = ui.dp(32);
-            photoSize.rightMargin = ui.dp(32);
-            photo.addView(preview, photoSize);
-            addPhoto = ui.pill("＋ 添加照片", false, this::imageSource);
-            photo.addView(addPhoto);
-            photoTools = ui.row();
-            photoTools.setGravity(Gravity.CENTER);
-            photo.addView(photoTools);
-            photoTools.addView(ui.ghost("换照片", this::imageSource));
-            photoTools.addView(ui.ghost("框选", this::manualCrop));
-            photoTools.addView(ui.ghost("保留笔刷", this::keepBrush));
-            photoMode = ui.ghost("", this::toggleImage);
-            photoTools.addView(photoMode);
-            photoChoice = ui.pill("", false, () -> {
-                useOriginalPhoto = originalSelected;
-                refreshText();
-            });
-            photo.addView(photoChoice);
+            ui.page(this, g.id == 0 ? "添加衣物" : "编辑衣物",
+                    "", () -> ui.confirmDestructive("退出编辑", "未保存的修改将丢失。", "放弃修改", exit), "完成", this::save);
+            renderPhoto();
             ui.gap(ui.body, 10);
             ui.rule(ui.body);
             ui.gap(ui.body, 10);
@@ -732,24 +871,35 @@ final class ClosetScreens {
             kind = ui.pill("", false, () -> selectType(null, value -> { g.type = value; refreshText(); }));
             details.addView(kind);
             ui.gap(details, 8);
-            brand = ui.field(details, "品牌", g.brand, false, false);
-            fabric = ui.field(details, "材质 / 成分", g.fabric, false, false);
+            LinearLayout more = ui.vertical();
+            boolean expanded = g.id != 0;
+            TextView moreButton = ui.pill(expanded ? "收起更多细节" : "更多细节", false, null);
+            details.addView(moreButton);
+            ui.body.addView(more);
+            more.setVisibility(expanded ? View.VISIBLE : View.GONE);
+            moreButton.setOnClickListener(view -> {
+                boolean show = more.getVisibility() == View.GONE;
+                more.setVisibility(show ? View.VISIBLE : View.GONE);
+                moreButton.setText(show ? "收起更多细节" : "更多细节");
+            });
+            brand = ui.field(more, "品牌", g.brand, false, false);
+            fabric = ui.field(more, "材质 / 成分", g.fabric, false, false);
             season = ui.pill("", false, this::setSeasons);
-            details.addView(season);
+            more.addView(season);
             sourceTextButton = ui.ghost("商品原文", () -> showRaw("商品原文", g.sourceText));
-            details.addView(sourceTextButton);
-            ui.section(ui.body, "颜色");
-            colorBox = ui.card(ui.body);
-            ui.section(ui.body, "洗护");
-            LinearLayout label = ui.card(ui.body);
+            more.addView(sourceTextButton);
+            ui.section(more, "颜色");
+            colorBox = ui.card(more);
+            ui.section(more, "洗护");
+            LinearLayout label = ui.card(more);
             ui.actions(label, new String[]{"扫描洗标", "编辑符号"}, this::labelSource, this::symbolPicker);
             symbolSummary = ui.text("", 14, INK, false);
             label.addView(symbolSummary);
             care = ui.field(label, "洗护说明", g.care, true, false);
             labelTextButton = ui.ghost("洗标原文", () -> showRaw("洗标原文", g.labelText));
             label.addView(labelTextButton);
-            ui.section(ui.body, "护理提醒");
-            LinearLayout reminders = ui.card(ui.body);
+            ui.section(more, "护理提醒");
+            LinearLayout reminders = ui.card(more);
             wash = ui.field(reminders, "洗涤间隔（次）", Integer.toString(g.washEvery), false, true);
             idle = ui.field(reminders, "闲置间隔（天）", Integer.toString(g.idleDays), false, true);
             reminders.addView(ui.text("0 为关闭", 12, MUTED, false));
@@ -761,33 +911,81 @@ final class ClosetScreens {
             ui.body.requestFocus();
         }
 
-        private TextView photoChoice;
+        void renderPhotoEditor() {
+            photoOnly = true;
+            ui.page(this, "修图", g.name, exit, "完成", this::savePhoto);
+            renderPhoto();
+            if (!g.original.isEmpty()) ui.body.addView(ui.ghost("用原图重新抠图", this::reprocessPhoto));
+            refreshText();
+        }
+
+        private void reprocessPhoto() {
+            Bitmap source = imported == null ? db.image(g.original, 1) : imported;
+            if (source == null) { ui.toast("找不到原图"); return; }
+            useImage(source, false);
+        }
+
+        private void renderPhoto() {
+            ui.section(ui.body, g.id == 0 ? "衣物照片 *" : "衣物照片");
+            LinearLayout photo = ui.vertical();
+            ui.body.addView(photo);
+            preview = ui.image(db.image(g.photo, 2), 290);
+            LinearLayout.LayoutParams photoSize = new LinearLayout.LayoutParams(-1, ui.dp(290));
+            photoSize.leftMargin = ui.dp(32);
+            photoSize.rightMargin = ui.dp(32);
+            photo.addView(preview, photoSize);
+            coverLabel = ui.text("", 13, MUTED, false);
+            coverLabel.setGravity(Gravity.CENTER);
+            photo.addView(coverLabel);
+            addPhoto = ui.pill("＋ 添加照片", false, this::imageSource);
+            photo.addView(addPhoto);
+            photoTools = ui.row();
+            photoTools.setGravity(Gravity.CENTER);
+            photo.addView(photoTools);
+            photoTools.addView(ui.ghost("换照片", this::imageSource));
+            photoTools.addView(ui.ghost("框选", this::manualCrop));
+            photoTools.addView(ui.ghost("保留笔刷", this::keepBrush));
+            photoMode = ui.ghost("", this::toggleImage);
+            photoTools.addView(photoMode);
+        }
+
+        private void savePhoto() {
+            Bitmap original = imported;
+            Bitmap processed = cutout;
+            Point origin = cutoutOrigin;
+            boolean coverOriginal = originalSelected;
+            ui.task("正在保存照片…", () -> {
+                db.save(g, original, processed, origin, coverOriginal);
+                return g.id;
+            }, id -> exit.run());
+        }
 
         private void refreshText() {
-            kind.setText(g.type.isEmpty() ? "选择类别 *" : "类别  " + g.type + "  ›");
-            season.setText(g.seasons == 0 ? "季节未标注  ›" : "季节 · " + seasons(g.seasons) + "  ›");
-            symbolSummary.setText(g.symbols);
-            symbolSummary.setVisibility(g.symbols.isEmpty() ? View.GONE : View.VISIBLE);
-            sourceTextButton.setVisibility(g.sourceText.isEmpty() ? View.GONE : View.VISIBLE);
-            labelTextButton.setVisibility(g.labelText.isEmpty() ? View.GONE : View.VISIBLE);
+            if (!photoOnly) {
+                kind.setText(g.type.isEmpty() ? "选择类别 *" : "类别  " + g.type + "  ›");
+                season.setText(g.seasons == 0 ? "季节未标注  ›" : "季节 · " + seasons(g.seasons) + "  ›");
+                symbolSummary.setText(g.symbols);
+                symbolSummary.setVisibility(g.symbols.isEmpty() ? View.GONE : View.VISIBLE);
+                sourceTextButton.setVisibility(g.sourceText.isEmpty() ? View.GONE : View.VISIBLE);
+                labelTextButton.setVisibility(g.labelText.isEmpty() ? View.GONE : View.VISIBLE);
+            }
             Bitmap current = displayed();
             preview.setImageBitmap(current);
             preview.setVisibility(current == null ? View.GONE : View.VISIBLE);
             photoTools.setVisibility(current == null ? View.GONE : View.VISIBLE);
             addPhoto.setVisibility(current == null ? View.VISIBLE : View.GONE);
-            boolean hasAlternative = cutout != null && cutout != imported || !g.original.equals(g.photo) && imported == null;
+            boolean hasAlternative = cutout != null && cutout != imported || imported == null && !g.processed.isEmpty();
             photoMode.setVisibility(hasAlternative ? View.VISIBLE : View.GONE);
             photoMode.setText(originalSelected ? "看处理图" : "看原图");
-            boolean usingOriginal = useOriginalPhoto || cutout == null && imported == null && g.original.equals(g.photo);
-            photoChoice.setText(originalSelected == usingOriginal ? "当前使用此图"
-                    : originalSelected ? "使用原图" : "使用处理图");
-            photoChoice.setEnabled(originalSelected != usingOriginal);
-            photoChoice.setVisibility(current != null && hasAlternative ? View.VISIBLE : View.GONE);
+            coverLabel.setVisibility(hasAlternative ? View.VISIBLE : View.GONE);
+            coverLabel.setText(originalSelected ? "封面使用原图" : "封面使用处理图");
         }
 
         private void imageSource() {
-            ui.choose("选择衣物照片", new String[]{"拍摄实物", "从相册导入", "导入网购截图或参数表"},
-                    i -> ui.requestImage(i == 2 ? "shop" : "photo", g.id, i == 0, b -> useImage(b, i == 2)));
+            String[] options = photoOnly ? new String[]{"拍照", "从相册选图"}
+                    : new String[]{"拍照", "从相册选图", "导入网购截图"};
+            ui.choose("选择衣物照片", options, i -> ui.requestImage(
+                    photoOnly ? "edit-photo" : i == 2 ? "shop" : "photo", g.id, i == 0, b -> useImage(b, i == 2)));
         }
 
         void useImage(Bitmap bitmap, boolean shop) {
@@ -795,14 +993,13 @@ final class ClosetScreens {
             target = bitmap;
             cutout = null;
             cutoutOrigin = null;
-            useOriginalPhoto = false;
             originalSelected = false;
             if (shop) {
                 ui.task("正在读取商品文字…", () -> readText(bitmap), text -> {
                     g.sourceText = text;
                     String b = ImageAnalysis.brand(text), f = ImageAnalysis.material(text);
-                    if (!b.isEmpty()) brand.setText(b);
-                    if (!f.isEmpty()) fabric.setText(f);
+                    if (!photoOnly && !b.isEmpty()) brand.setText(b);
+                    if (!photoOnly && !f.isEmpty()) fabric.setText(f);
                     String type = ImageAnalysis.categoryFromText(text);
                     if (!type.isEmpty()) g.type = type;
                     if (text.isEmpty()) ui.toast("未识别到文字");
@@ -810,7 +1007,7 @@ final class ClosetScreens {
                     ui.choose("商品截图", new String[]{"框选商品", "识别整张截图", "只提取文字"}, i -> {
                                 if (i == 0) cropGarment(bitmap);
                                 else if (i == 1) identify(bitmap, null);
-                                else { originalSelected = true; useOriginalPhoto = true; g.colors.clear(); showColors(); refreshText(); }
+                                else { originalSelected = true; g.colors.clear(); showColors(); refreshText(); }
                             });
                 });
             } else identify(bitmap, null);
@@ -819,11 +1016,6 @@ final class ClosetScreens {
         private String readText(Bitmap bitmap) {
             try { return ui.textReader.read(bitmap); }
             catch (Exception | LinkageError e) { Log.w("SmartWardrobe", "OCR", e); return ""; }
-        }
-
-        private ImageAnalysis.Detection detectGarment(Bitmap image) {
-            try { return ui.garmentDetector.detect(image); }
-            catch (Exception | LinkageError e) { Log.w("SmartWardrobe", "Garment detection", e); return null; }
         }
 
         private void identify(Bitmap image, Point offset) {
@@ -840,8 +1032,7 @@ final class ClosetScreens {
                     cutout = image;
                     cutoutOrigin = null;
                 }
-                useOriginalPhoto = false;
-                originalSelected = false;
+                    originalSelected = false;
                 colorCheck = result.detection == null;
                 g.colors = result.colors;
                 showColors();
@@ -866,13 +1057,13 @@ final class ClosetScreens {
             Bitmap source = imported == null ? db.image(g.original, 1) : imported;
             if (source == null) { ui.toast("找不到原图"); return; }
             if (cutoutOrigin != null) {
-                Bitmap base = cutout == null ? db.image(g.photo, 1) : cutout;
+                Bitmap base = cutout == null ? db.image(g.processed, 1) : cutout;
                 if (base != null) {
                     brushSheet(source, new KeepBrushView.Cutout(base, cutoutOrigin));
                     return;
                 }
             }
-            if (imported == null && cutout == null && !g.original.equals(g.photo)) {
+            if (imported == null && cutout == null && !g.processed.isEmpty()) {
                 ui.prompt("重新识别照片", "旧处理图没有记录裁剪位置。用原图重新识别，再涂抹要补回的部分。",
                         "重新识别", () -> ui.task("正在识别衣物…", () -> detectGarment(source), result ->
                                 brushSheet(source, result == null ? null : new KeepBrushView.Cutout(result.image(),
@@ -908,15 +1099,15 @@ final class ClosetScreens {
             actions.addView(ui.ghost("撤销", brush::undo));
             actions.addView(ui.ghost("切换预览", brush::togglePreview));
             sheet.content.addView(actions);
-            sheet.button("使用结果", true, () -> {
+            sheet.button(photoOnly ? "确认使用" : "完成", true, () -> {
                 KeepBrushView.Cutout result = brush.result();
                 if (result == null) { ui.toast("请先涂抹要保留的区域"); return; }
                 cutout = result.image();
                 cutoutOrigin = result.origin();
-                useOriginalPhoto = false;
-                originalSelected = false;
+                    originalSelected = false;
                 sheet.dismiss();
-                refreshText();
+                if (photoOnly) savePhoto();
+                else refreshText();
             });
             sheet.show();
         }
@@ -924,7 +1115,7 @@ final class ClosetScreens {
         private Bitmap displayed() {
             if (originalSelected) return imported == null ? db.image(g.original, 1) : imported;
             if (cutout != null) return cutout;
-            return target == null ? db.image(g.photo, 2) : target;
+            return target == null ? db.image(g.processed.isEmpty() ? g.original : g.processed, 2) : target;
         }
 
         private void toggleImage() {
@@ -962,8 +1153,12 @@ final class ClosetScreens {
         }
 
         private void showColors() {
+            if (photoOnly) return;
             colorBox.removeAllViews();
-            if (colorCheck && !g.colors.isEmpty()) colorBox.addView(ui.text("颜色待核对", 12, MUTED, false));
+            if (colorCheck && !g.colors.isEmpty()) {
+                WardrobeStore.Swatch main = g.colors.stream().filter(color -> color.primary).findFirst().orElse(g.colors.get(0));
+                colorBox.addView(ui.ghost("已自动取色，点此微调", () -> colorDialog(main)));
+            }
             for (WardrobeStore.Swatch color : g.colors) {
                 colorBox.addView(ui.colorChip(color.name + " · " + color.percent + "% · " + (color.primary ? "主色" : "辅色"),
                         color.rgb, () -> colorDialog(color)));
@@ -1024,7 +1219,7 @@ final class ClosetScreens {
 
         private void pickPhotoColor(ColorControls controls) {
             Bitmap original = imported != null ? imported : db.image(g.original, 1);
-            Bitmap processed = cutout != null ? cutout : target != null ? target : db.image(g.photo, 1);
+            Bitmap processed = cutout != null ? cutout : target != null ? target : db.image(g.processed, 1);
             Bitmap initial = processed == null ? original : processed;
             if (initial == null) { ui.toast("请先添加照片"); return; }
 
@@ -1067,11 +1262,12 @@ final class ClosetScreens {
             sheet.show();
         }
 
-        void labelSource() {
-            ui.scanCare(g.id, (image, hits) -> scanLabel(image, "", hits));
-        }
+        void labelSource() { labelSource(false); }
 
-        void scanLabel(Bitmap image) { scanLabel(image, ""); }
+        void labelSource(boolean direct) {
+            saveLabelDirectly = direct;
+            ui.scanCare(g.id, direct, (image, hits) -> scanLabel(image, "", hits));
+        }
 
         private void scanLabel(Bitmap image, String priorText) {
             scanLabel(image, priorText, null);
@@ -1093,8 +1289,12 @@ final class ClosetScreens {
                 String instructions = ImageAnalysis.careText(result.text);
                 symbolPicker(image, result, () -> {
                     if (!result.text.isEmpty()) g.labelText = result.text;
-                    if (!composition.isEmpty()) fabric.setText(composition);
-                    if (!instructions.isEmpty()) care.setText(instructions);
+                    if (saveLabelDirectly) {
+                        db.saveCareLabel(g.id, g.symbols, result.text, composition, instructions);
+                    } else {
+                        if (!composition.isEmpty()) fabric.setText(composition);
+                        if (!instructions.isEmpty()) care.setText(instructions);
+                    }
                 });
             });
         }
@@ -1159,13 +1359,16 @@ final class ClosetScreens {
                 ui.rule(panel);
             }
             if (scan != null && !scan.text.isEmpty()) sheet.option("洗标原文", () -> showRaw("洗标原文", scan.text));
-            sheet.button("采用", true, () -> {
+            sheet.button("确认使用", true, () -> {
                 List<String> confirmed = new ArrayList<>();
                 for (String value : values) if (!"未确认".equals(value)) confirmed.add(value);
                 g.symbols = String.join("\n", confirmed);
                 adoptText.run();
                 sheet.dismiss();
-                refreshText();
+                if (saveLabelDirectly) {
+                    exit.run();
+                    ui.toast("已保存洗标");
+                } else refreshText();
             });
             sheet.show();
         }
@@ -1179,17 +1382,18 @@ final class ClosetScreens {
         private void save() {
             g.name = ui.value(name);
             if (g.name.isEmpty() || g.type.isEmpty()) { ui.toast("请填写名称并选择类别"); return; }
+            if (g.id == 0 && displayed() == null) { ui.toast("请添加衣物照片"); return; }
             g.brand = ui.value(brand);
             g.fabric = ui.value(fabric);
             g.care = ui.value(care);
             g.washEvery = number(wash, 10);
             g.idleDays = number(idle, 90);
             Bitmap original = imported;
-            boolean saveOriginal = useOriginalPhoto;
-            Bitmap picture = saveOriginal ? (original == null ? db.image(g.original, 1) : original) : cutout;
-            Point origin = saveOriginal ? null : cutoutOrigin;
+            Bitmap processed = cutout;
+            Point origin = cutoutOrigin;
+            boolean coverOriginal = originalSelected;
             boolean isNew = g.id == 0;
-            ui.task("正在保存衣物…", () -> { db.save(g, original, picture, origin); return g.id; }, id -> {
+            ui.task("正在保存衣物…", () -> { db.save(g, original, processed, origin, coverOriginal); return g.id; }, id -> {
                 if (isNew) detail(id, exit);
                 else exit.run();
             });

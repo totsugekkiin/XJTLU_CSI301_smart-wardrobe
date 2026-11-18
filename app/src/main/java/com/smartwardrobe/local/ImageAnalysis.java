@@ -115,7 +115,7 @@ final class ImageAnalysis {
                     if (row[4] < 0.25f || row[5] < 0 || row[5] >= TYPES.length
                             || row[2] <= row[0] || row[3] <= row[1]) continue;
                     java.util.Arrays.fill(candidate, false);
-                    Rect bounds = hasLongSleeves(row) ? new Rect() : null;
+                    Rect bounds = hasSleeves(row) ? new Rect() : null;
                     int count = addMask(proto, row, width, height, w, h, dx, dy, rgb, candidate, bounds);
                     if (count > 0 && isPants(row)) pants.add(row);
                     if (count > 0 && bounds != null) sleeveParts.add(new GarmentPart(row, bounds));
@@ -138,8 +138,11 @@ final class ImageAnalysis {
                 } else if (bodyBounds != null) {
                     final float[] body = dominant;
                     final Rect bounds = bodyBounds;
+                    boolean shortSleeve = hasShortSleeves(body);
                     sleeveParts.removeIf(part -> part.row() == body || part.row()[5] != body[5]
-                            || !couldBeSleeve(bounds, part.bounds()));
+                            // With layered clothing a weak torso prediction may belong to a different garment.
+                            || (shortSleeve && body[4] < .5f && part.row()[4] > body[4])
+                            || !couldBeSleeve(bounds, part.bounds(), shortSleeve));
                     // An upper sleeve may connect its cuff to the body in the next pass.
                     boolean joined;
                     int radius = Math.max(1, Math.round(1 / scale));
@@ -188,14 +191,24 @@ final class ImageAnalysis {
             return (int) box[5] == 6 || (int) box[5] == 7;
         }
 
-        private static boolean hasLongSleeves(float[] box) {
-            return (int) box[5] == 1 || (int) box[5] == 3 || (int) box[5] == 10;
+        private static boolean hasSleeves(float[] box) {
+            return hasShortSleeves(box) || (int) box[5] == 1 || (int) box[5] == 3 || (int) box[5] == 10;
         }
 
-        private static boolean couldBeSleeve(Rect body, Rect part) {
+        private static boolean hasShortSleeves(float[] box) {
+            return (int) box[5] == 0 || (int) box[5] == 2 || (int) box[5] == 9;
+        }
+
+        private static boolean couldBeSleeve(Rect body, Rect part, boolean shortSleeve) {
             float width = body.width(), height = body.height();
             boolean atSide = part.exactCenterX() <= body.left + .25f * width
                     || part.exactCenterX() >= body.right - .25f * width;
+            if (shortSleeve) {
+                return atSide && part.width() <= .45f * width
+                        && part.top >= body.top - .08f * height
+                        && part.top <= body.top + .45f * height
+                        && part.bottom <= body.top + .70f * height;
+            }
             return atSide && part.width() <= .45f * width && part.height() >= part.width()
                     && part.top >= body.top && part.top <= body.bottom
                     && part.bottom <= body.bottom + .35f * height;

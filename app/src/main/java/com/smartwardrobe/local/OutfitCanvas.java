@@ -21,7 +21,8 @@ final class OutfitCanvas extends View {
     private final Runnable selectionChanged;
     private WardrobeStore.Layer selected;
     private float lastX, lastY;
-    private boolean drag;
+    private boolean drag, transformed;
+    private Runnable transformFinished = () -> {};
     private boolean interactive = true;
 
     OutfitCanvas(Context context, List<WardrobeStore.Layer> layers, LongFunction<Bitmap> photos, Runnable selectionChanged) {
@@ -33,6 +34,7 @@ final class OutfitCanvas extends View {
         pinch = new ScaleGestureDetector(context, new ScaleGestureDetector.SimpleOnScaleGestureListener() {
             @Override public boolean onScale(ScaleGestureDetector detector) {
                 resize(detector.getScaleFactor());
+                transformed = true;
                 return true;
             }
         });
@@ -46,6 +48,8 @@ final class OutfitCanvas extends View {
         invalidate();
         selectionChanged.run();
     }
+
+    void setOnTransformFinished(Runnable finished) { transformFinished = finished; }
 
     void resize(float ratio) {
         if (selected == null) return;
@@ -130,12 +134,15 @@ final class OutfitCanvas extends View {
                     selected.x = clamp(selected.x + (x - lastX) / getWidth(), .02f, .98f);
                     selected.y = clamp(selected.y + (y - lastY) / getHeight(), .02f, .98f);
                     invalidate();
+                    transformed = true;
                     lastX = x;
                     lastY = y;
                 }
             }
             case MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 drag = false;
+                if (transformed) transformFinished.run();
+                transformed = false;
                 getParent().requestDisallowInterceptTouchEvent(false);
                 if (event.getActionMasked() == MotionEvent.ACTION_UP) performClick();
             }

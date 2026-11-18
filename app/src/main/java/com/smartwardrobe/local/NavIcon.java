@@ -7,13 +7,17 @@ import android.graphics.Path;
 import android.view.View;
 
 final class NavIcon extends View {
+    static final int ARCHIVE = 4;
+    static final int FAVORITE = 5;
     private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path path = new Path();
     private final int icon;
+    private final boolean active;
 
     NavIcon(Context context, int icon, boolean active) {
         super(context);
         this.icon = icon;
+        this.active = active;
         stroke.setColor(active ? MainActivity.INK : MainActivity.MUTED);
         stroke.setStyle(Paint.Style.STROKE);
         stroke.setStrokeWidth(active ? 1.9f : 1.45f);
@@ -46,6 +50,23 @@ final class NavIcon extends View {
                 line(canvas, 2, 7, 12, 2, 22, 7, 12, 12, 2, 7);
                 line(canvas, 2, 12, 12, 17, 22, 12);
                 line(canvas, 2, 17, 12, 22, 22, 17);
+            }
+            case ARCHIVE -> {
+                canvas.drawRoundRect(2, 3, 22, 8, 1, 1, stroke);
+                line(canvas, 4, 8, 4, 21, 20, 21, 20, 8);
+                canvas.drawLine(9, 12, 15, 12, stroke);
+            }
+            case FAVORITE -> {
+                path.reset();
+                path.moveTo(12, 21);
+                path.cubicTo(10, 19, 3, 14, 3, 9);
+                path.cubicTo(3, 3, 9, 2, 12, 7);
+                path.cubicTo(15, 2, 21, 3, 21, 9);
+                path.cubicTo(21, 14, 14, 19, 12, 21);
+                path.close();
+                stroke.setColor(MainActivity.INK);
+                stroke.setStyle(active ? Paint.Style.FILL : Paint.Style.STROKE);
+                canvas.drawPath(path, stroke);
             }
             default -> {
                 canvas.drawRoundRect(3, 5, 21, 22, 2, 2, stroke);

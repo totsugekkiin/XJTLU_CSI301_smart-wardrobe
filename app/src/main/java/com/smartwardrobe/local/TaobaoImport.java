@@ -91,47 +91,43 @@ final class TaobaoImport {
 
     private final MainActivity ui;
     private final Consumer<Result> onImport;
+    private final Runnable chooseScreenshot;
 
-    TaobaoImport(MainActivity ui, Consumer<Result> onImport) {
+    TaobaoImport(MainActivity ui, Consumer<Result> onImport, Runnable chooseScreenshot) {
         this.ui = ui;
         this.onImport = onImport;
+        this.chooseScreenshot = chooseScreenshot;
     }
 
     void start() {
         EditText input = new EditText(ui);
-        input.setHint("淘宝分享文案、商品链接或图片地址");
+        input.setHint("粘贴淘宝分享内容或商品链接");
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE
                 | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
         input.setMinLines(3);
         AlertDialog dialog = new AlertDialog.Builder(ui)
-                .setTitle("从淘宝导入")
-                .setMessage("可粘贴整段分享文案。商品页若提示登录，请在淘宝页面手动登录。")
+                .setTitle("网购导入")
+                .setMessage("粘贴淘宝分享内容，或从相册选一张商品截图。")
                 .setView(input)
                 .setNegativeButton("取消", null)
-                .setNeutralButton("用图片地址", null)
-                .setPositiveButton("解析链接", null)
+                .setNeutralButton("选截图", (ignored, which) -> chooseScreenshot.run())
+                .setPositiveButton("导入链接", null)
                 .create();
         dialog.setOnShowListener(ignored -> {
-            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(view -> {
-                String raw = input.getText().toString();
-                Input parsed = parseInput(raw);
-                dialog.dismiss();
-                imageFallback(readName(raw), parsed != null && isProduct(parsed.url) ? parsed.url : null);
-            });
             Button proceed = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
             input.addTextChangedListener(new TextWatcher() {
                 @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
                 @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
                 @Override public void afterTextChanged(Editable text) {
                     Input parsed = parseInput(text.toString());
-                    if (parsed == null) proceed.setText("解析链接");
+                    if (parsed == null) proceed.setText("导入链接");
                     else proceed.setText(isImage(parsed.url) ? "预览图片" : "打开商品页");
                 }
             });
             proceed.setOnClickListener(view -> {
                 Input parsed = parseInput(input.getText().toString());
                 if (parsed == null) {
-                    input.setError("请输入淘宝商品链接或阿里 CDN 商品图片地址");
+                    input.setError("请粘贴淘宝商品链接或分享内容");
                     return;
                 }
                 dialog.dismiss();
@@ -226,10 +222,10 @@ final class TaobaoImport {
 
     private void imageFallback(String name, Uri productUrl) {
         EditText field = new EditText(ui);
-        field.setHint("粘贴 img.alicdn.com 等图片地址");
+        field.setHint("粘贴商品图片链接");
         field.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
         AlertDialog.Builder panel = new AlertDialog.Builder(ui)
-                .setTitle("用淘宝商品图片地址")
+                .setTitle("用商品图片链接")
                 .setMessage("在手机浏览器打开商品，把主图单独打开，再从地址栏复制网址。回到衣橱粘贴。"
                         + (name.isEmpty() ? "" : "\n已保留商品名：" + name))
                 .setView(field)

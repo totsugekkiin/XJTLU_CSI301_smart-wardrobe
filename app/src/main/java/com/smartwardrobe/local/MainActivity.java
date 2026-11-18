@@ -1,11 +1,12 @@
 package com.smartwardrobe.local;
 
-import android.app.Activity;
+import android.animation.ValueAnimator;
 import android.content.ClipData;
 import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
@@ -15,9 +16,11 @@ import android.provider.MediaStore;
 import android.text.InputType;
 import android.util.Log;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
+import android.view.animation.DecelerateInterpolator;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageView;
@@ -26,16 +29,21 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.FrameLayout;
 import android.widget.ProgressBar;
+import androidx.activity.ComponentActivity;
+import androidx.activity.OnBackPressedCallback;
 import androidx.core.content.FileProvider;
 
 import java.io.File;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 
-public final class MainActivity extends Activity {
+public final class MainActivity extends ComponentActivity {
     static final int PAPER = Color.WHITE, CARD = Color.WHITE, INK = 0xff101010, MUTED = 0xff686868,
             SAND = 0xfff4f4f3, STROKE = 0xffe4e4e4;
     private static final int DESTRUCTIVE = 0xffa12424;
@@ -43,15 +51,39 @@ public final class MainActivity extends Activity {
     static final String[] TYPES = {"上衣", "T 恤", "衬衫", "针织衫", "背心", "吊带", "外套", "风衣", "西装", "夹克",
             "短裤", "长裤", "牛仔裤", "工装裤", "半裙", "连衣裙", "鞋子", "配饰", "其他"};
     private static final int PICK = 14, CAMERA = 15, SCAN_CARE = 16, PHOTO_PERMISSION = 17;
+    private static final int PICK_BATCH = 18;
 
     WardrobeStore db;
     ClosetScreens closet;
     OutfitScreens outfits;
     LinearLayout body;
-    Runnable back;
+    private Runnable back;
     int tab;
     private LinearLayout root;
     private FrameLayout frame;
+    private volatile ScrollView pageScroll;
+    private View outgoingPage;
+    private View animatedPage;
+    private final ArrayList<PagePosition> pagePath = new ArrayList<>();
+    private final Map<Object, PagePosition> tabPositions = new HashMap<>();
+    private final ExecutorService photoLoader = Executors.newFixedThreadPool(2);
+    private final ArrayList<PhotoRequest> pendingPhotos = new ArrayList<>();
+    private final Rect visiblePhotoBounds = new Rect();
+    private final OnBackPressedCallback systemBack = new OnBackPressedCallback(false) {
+        @Override public void handleOnBackPressed() {
+            if (back != null) back.run();
+            else openTab(0);
+        }
+    };
+
+    private record PhotoRequest(View target, String name, int sample, Consumer<Bitmap> show) {}
+
+    private static final class PagePosition {
+        final Object key;
+        int scrollY;
+
+        PagePosition(Object key) { this.key = key; }
+    }
     private TextView feedback;
     private Consumer<Bitmap> imageCallback;
     private java.util.function.BiConsumer<Bitmap, java.util.List<ImageAnalysis.SymbolHit>> careCallback;
@@ -73,8 +105,25 @@ public final class MainActivity extends Activity {
         colorReader = new GarmentColors();
         closet = new ClosetScreens(this);
         outfits = new OutfitScreens(this);
+        frame = new FrameLayout(this);
+        frame.setBackgroundColor(PAPER);
+        frame.setOnApplyWindowInsetsListener((view, insets) -> {
+            if (android.os.Build.VERSION.SDK_INT >= 30) {
+                android.graphics.Insets bars = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+                android.graphics.Insets keyboard = insets.getInsets(WindowInsets.Type.ime());
+                view.setPadding(bars.left, bars.top, bars.right, Math.max(bars.bottom, keyboard.bottom));
+            }
+            return insets;
+        });
+        setContentView(frame);
+        frame.getViewTreeObserver().addOnPreDrawListener(() -> {
+            loadVisiblePhotos();
+            return true;
+        });
+        getOnBackPressedDispatcher().addCallback(this, systemBack);
         openTab(state == null ? 0 : state.getInt("tab"));
         if (state != null) {
+            outfits.restoreCanvas(state.getLong("canvasDraft"));
             pendingImagePurpose = state.getString("purpose", "");
             pendingGarment = state.getLong("garment");
             String path = state.getString("capture", "");
@@ -82,7 +131,9 @@ public final class MainActivity extends Activity {
                 capture = new File(path);
                 cameraUri = FileProvider.getUriForFile(this, getPackageName() + ".capture", capture);
             }
-            if (pendingImagePurpose.equals("live-label")) careCallback = closet.restoreCareScan(pendingGarment);
+            if (pendingImagePurpose.startsWith("live-label")) {
+                careCallback = closet.restoreCareScan(pendingGarment, pendingImagePurpose.equals("live-label-detail"));
+            }
             else if (!pendingImagePurpose.isEmpty()) imageCallback = closet.restoreImport(pendingImagePurpose, pendingGarment);
         }
     }
@@ -90,12 +141,16 @@ public final class MainActivity extends Activity {
     @Override protected void onSaveInstanceState(Bundle state) {
         super.onSaveInstanceState(state);
         state.putInt("tab", tab);
+        state.putLong("canvasDraft", outfits.visibleDraftId());
         state.putString("purpose", pendingImagePurpose);
         state.putLong("garment", pendingGarment);
         if (capture != null) state.putString("capture", capture.getAbsolutePath());
     }
 
     @Override protected void onDestroy() {
+        finishPageTransition();
+        pageScroll = null;
+        photoLoader.shutdownNow();
         worker.shutdown();
         super.onDestroy();
     }
@@ -111,24 +166,42 @@ public final class MainActivity extends Activity {
         }
     }
 
-    void page(String title, String subtitle, Runnable goBack, String action, Runnable onAction) {
+    void page(Object key, String title, String subtitle, Runnable goBack, String action, Runnable onAction) {
+        finishPageTransition();
+        pendingPhotos.clear();
+        PagePosition previousPosition = pagePath.isEmpty() ? null : pagePath.get(pagePath.size() - 1);
+        if (previousPosition != null) previousPosition.scrollY = pageScroll.getScrollY();
+        int match = pagePath.size() - 1;
+        while (match >= 0 && !pagePath.get(match).key.equals(key)) match--;
+        boolean returning = previousPosition != null && match < pagePath.size() - 1
+                && (match >= 0 || back != null && goBack == null);
+        boolean opening = previousPosition != null && match < 0 && goBack != null;
+        PagePosition destination;
+        if (goBack == null) {
+            destination = tabPositions.computeIfAbsent(key, PagePosition::new);
+            pagePath.clear();
+            pagePath.add(destination);
+        } else if (match >= 0) {
+            destination = pagePath.get(match);
+            pagePath.subList(match + 1, pagePath.size()).clear();
+        } else {
+            destination = new PagePosition(key);
+            pagePath.add(destination);
+        }
+
+        LinearLayout previousRoot = root;
         back = goBack;
-        root = vertical();
-        root.setBackgroundColor(PAPER);
-        root.setOnApplyWindowInsetsListener((v, insets) -> {
-            if (android.os.Build.VERSION.SDK_INT >= 30) {
-                android.graphics.Insets bars = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
-                android.graphics.Insets keyboard = insets.getInsets(WindowInsets.Type.ime());
-                v.setPadding(bars.left, bars.top, bars.right, Math.max(bars.bottom, keyboard.bottom));
+        systemBack.setEnabled(back != null || tab != 0);
+        root = new LinearLayout(this) {
+            @Override public boolean dispatchTouchEvent(MotionEvent event) {
+                return this == root && super.dispatchTouchEvent(event);
             }
-            return insets;
-        });
-        frame = new FrameLayout(this);
-        frame.addView(root, new FrameLayout.LayoutParams(-1, -1));
-        setContentView(frame);
+        };
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(PAPER);
 
         LinearLayout header = vertical();
-        header.setPadding(dp(20), dp(3), dp(20), dp(3));
+        header.setPadding(dp(20), dp(6), dp(20), dp(6));
         LinearLayout top = row();
         top.setGravity(Gravity.CENTER_VERTICAL);
         if (goBack != null) {
@@ -151,16 +224,30 @@ public final class MainActivity extends Activity {
             top.addView(pill(action, true, onAction));
         }
         header.addView(top);
-        if (!subtitle.isEmpty() && goBack != null) header.addView(text(subtitle, 13, MUTED, false));
+        if (!subtitle.isEmpty() && goBack != null) {
+            header.addView(text(subtitle, 13, MUTED, false));
+            gap(header, 4);
+        }
         root.addView(header);
         rule(root);
 
-        ScrollView scroll = new ScrollView(this);
+        ScrollView scroll = new ScrollView(this) {
+            private int initialScrollY = destination.scrollY;
+
+            @Override protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
+                super.onLayout(changed, left, top, right, bottom);
+                if (initialScrollY > 0) {
+                    scrollTo(0, initialScrollY);
+                    initialScrollY = 0;
+                }
+            }
+        };
+        pageScroll = scroll;
         scroll.setClipToPadding(false);
         scroll.setFillViewport(false);
         scroll.setVerticalScrollBarEnabled(false);
         body = vertical();
-        body.setPadding(dp(20), dp(14), dp(20), dp(20));
+        body.setPadding(dp(20), dp(18), dp(20), dp(28));
         scroll.addView(body, new ScrollView.LayoutParams(-1, -2));
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
 
@@ -169,7 +256,7 @@ public final class MainActivity extends Activity {
             LinearLayout nav = row();
             String[] names = {"衣橱", "洗护", "穿搭", "日历"};
             int[] tabs = {0, 1, 3, 4};
-            long pending = db.garments().stream().filter(g -> g.dirty).count();
+            long pending = db.pendingWashCount();
             for (int i = 0; i < names.length; i++) {
                 int index = tabs[i];
                 boolean active = index == tab;
@@ -194,17 +281,40 @@ public final class MainActivity extends Activity {
                 item.setSelected(active);
                 item.setContentDescription(names[i]);
                 label.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-                click(item, PAPER, 0, 0, () -> openTab(index));
+                click(item, PAPER, 0, 0, () -> { if (index != tab) openTab(index); });
                 nav.addView(item, new LinearLayout.LayoutParams(0, dp(61), 1));
             }
             root.addView(nav);
         }
+        showPage(previousRoot, opening, returning);
     }
 
-    @Override public void onBackPressed() {
-        if (back != null) back.run();
-        else if (tab != 0) openTab(0);
-        else super.onBackPressed();
+    private void showPage(View previous, boolean opening, boolean returning) {
+        boolean animate = previous != null && previous.isLaidOut() && (opening || returning)
+                && ValueAnimator.areAnimatorsEnabled();
+        if (!animate && previous != null) frame.removeView(previous);
+        frame.addView(root, animate && opening ? 1 : 0, new FrameLayout.LayoutParams(-1, -1));
+        if (!animate) return;
+
+        outgoingPage = previous;
+        outgoingPage.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+        animatedPage = opening ? root : previous;
+        int offset = previous.getWidth() * (root.getLayoutDirection() == View.LAYOUT_DIRECTION_RTL ? -1 : 1);
+        animatedPage.setTranslationX(opening ? offset : 0);
+        animatedPage.animate()
+                .translationX(opening ? 0 : offset)
+                .setDuration(190)
+                .setInterpolator(new DecelerateInterpolator())
+                .withEndAction(this::finishPageTransition);
+    }
+
+    private void finishPageTransition() {
+        if (animatedPage == null) return;
+        animatedPage.animate().cancel();
+        animatedPage.setTranslationX(0);
+        frame.removeView(outgoingPage);
+        outgoingPage = null;
+        animatedPage = null;
     }
 
     int dp(float value) { return Math.round(value * getResources().getDisplayMetrics().density); }
@@ -306,15 +416,18 @@ public final class MainActivity extends Activity {
     }
 
     void actions(LinearLayout box, String[] labels, Runnable... actions) {
-        LinearLayout bar = row();
-        for (int i = 0; i < labels.length; i++) {
-            TextView button = pill(labels[i], false, actions[i]);
-            LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, -2, 1);
-            if (i > 0) p.leftMargin = dp(7);
-            bar.addView(button, p);
+        for (int first = 0; first < labels.length; first += 2) {
+            LinearLayout bar = row();
+            bar.setBaselineAligned(false);
+            for (int i = first; i < Math.min(first + 2, labels.length); i++) {
+                TextView button = pill(labels[i], false, actions[i]);
+                LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, -2, 1);
+                if (i > first) p.setMarginStart(dp(12));
+                bar.addView(button, p);
+            }
+            box.addView(bar);
+            gap(box, 10);
         }
-        box.addView(bar);
-        gap(box, 8);
     }
 
     void gap(LinearLayout box, int height) { box.addView(new View(this), new LinearLayout.LayoutParams(1, dp(height))); }
@@ -328,9 +441,9 @@ public final class MainActivity extends Activity {
     void section(LinearLayout box, String label) {
         TextView title = text(label, 18, INK, true);
         title.setAccessibilityHeading(true);
-        gap(box, 8);
+        gap(box, 16);
         box.addView(title);
-        gap(box, 7);
+        gap(box, 10);
     }
 
     LinearLayout card(LinearLayout parent) {
@@ -338,7 +451,7 @@ public final class MainActivity extends Activity {
         card.setBackground(shape(CARD, 4, STROKE));
         card.setPadding(dp(14), dp(14), dp(14), dp(14));
         parent.addView(card, new LinearLayout.LayoutParams(-1, -2));
-        gap(parent, 9);
+        gap(parent, 14);
         return card;
     }
 
@@ -356,6 +469,39 @@ public final class MainActivity extends Activity {
         view.setClipToOutline(true);
         view.setLayoutParams(new LinearLayout.LayoutParams(-1, dp(height)));
         return view;
+    }
+
+    ImageView photo(String name, int sample, int height) {
+        ImageView view = image(null, height);
+        loadPhoto(view, name, sample, view::setImageBitmap);
+        return view;
+    }
+
+    void loadPhoto(View target, String name, int sample, Consumer<Bitmap> show) {
+        if (name == null || name.isEmpty()) return;
+        Bitmap cached = db.cachedImage(name, sample);
+        if (cached != null) {
+            show.accept(cached);
+            return;
+        }
+        pendingPhotos.add(new PhotoRequest(target, name, sample, show));
+    }
+
+    private void loadVisiblePhotos() {
+        ScrollView owner = pageScroll;
+        var requests = pendingPhotos.iterator();
+        while (requests.hasNext()) {
+            PhotoRequest request = requests.next();
+            if (!request.target().getLocalVisibleRect(visiblePhotoBounds)) continue;
+            requests.remove();
+            photoLoader.execute(() -> {
+                if (pageScroll != owner) return;
+                Bitmap bitmap = db.image(request.name(), request.sample());
+                if (bitmap != null) runOnUiThread(() -> {
+                    if (pageScroll == owner) request.show().accept(bitmap);
+                });
+            });
+        }
     }
 
     EditText field(LinearLayout box, String label, String value, boolean multiline, boolean numeric) {
@@ -445,15 +591,20 @@ public final class MainActivity extends Activity {
         sheet.show();
     }
 
-    void toast(String message) {
+    void toast(String message) { showFeedback(message, false); }
+
+    void bottomNotice(String message) { showFeedback(message, true); }
+
+    private void showFeedback(String message, boolean bottom) {
         if (feedback != null && feedback.getParent() instanceof FrameLayout owner) owner.removeView(feedback);
         FrameLayout owner = frame;
         TextView notice = text(message, 14, Color.WHITE, true);
         feedback = notice;
         notice.setBackground(shape(INK, 8, 0));
         notice.setPadding(dp(16), dp(10), dp(16), dp(10));
-        FrameLayout.LayoutParams p = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
-        p.setMargins(dp(20), root.getPaddingTop() + dp(12), dp(20), 0);
+        int edge = bottom ? Gravity.BOTTOM : Gravity.TOP;
+        FrameLayout.LayoutParams p = new FrameLayout.LayoutParams(-2, -2, edge | Gravity.CENTER_HORIZONTAL);
+        p.setMargins(dp(20), bottom ? 0 : dp(12), dp(20), bottom ? dp(76) : 0);
         owner.addView(notice, p);
         notice.announceForAccessibility(message);
         notice.postDelayed(() -> owner.removeView(notice), 2300);
@@ -485,6 +636,18 @@ public final class MainActivity extends Activity {
                 });
             }
         });
+    }
+
+    void requestBatchImages() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT)
+                .addCategory(Intent.CATEGORY_OPENABLE)
+                .setType("image/*")
+                .putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+        try {
+            startActivityForResult(intent, PICK_BATCH);
+        } catch (android.content.ActivityNotFoundException e) {
+            toast("无法打开图片来源");
+        }
     }
 
     void requestImage(String purpose, long garment, boolean fromCamera, Consumer<Bitmap> callback) {
@@ -531,8 +694,8 @@ public final class MainActivity extends Activity {
         }
     }
 
-    void scanCare(long garment, java.util.function.BiConsumer<Bitmap, java.util.List<ImageAnalysis.SymbolHit>> callback) {
-        pendingImagePurpose = "live-label";
+    void scanCare(long garment, boolean direct, java.util.function.BiConsumer<Bitmap, java.util.List<ImageAnalysis.SymbolHit>> callback) {
+        pendingImagePurpose = direct ? "live-label-detail" : "live-label";
         pendingGarment = garment;
         careCallback = callback;
         startActivityForResult(new Intent(this, CareScanActivity.class), SCAN_CARE);
@@ -540,13 +703,28 @@ public final class MainActivity extends Activity {
 
     @Override protected void onActivityResult(int code, int result, Intent data) {
         super.onActivityResult(code, result, data);
+        if (code == PICK_BATCH) {
+            if (result != RESULT_OK || data == null) return;
+            var images = new java.util.LinkedHashSet<Uri>();
+            ClipData selection = data.getClipData();
+            if (selection != null) {
+                for (int i = 0; i < selection.getItemCount(); i++) {
+                    Uri uri = selection.getItemAt(i).getUri();
+                    if (uri != null) images.add(uri);
+                }
+            }
+            if (data.getData() != null) images.add(data.getData());
+            if (!images.isEmpty()) closet.confirmBatchImport(new java.util.ArrayList<>(images));
+            return;
+        }
         if (code == SCAN_CARE) {
             var callback = careCallback;
+            boolean direct = pendingImagePurpose.equals("live-label-detail");
             careCallback = null;
             pendingImagePurpose = "";
             if (result != RESULT_OK || callback == null || data == null) return;
             if (data.getBooleanExtra(CareScanActivity.GALLERY, false)) {
-                requestImage("label", pendingGarment, false, image -> callback.accept(image, null));
+                requestImage(direct ? "label-detail" : "label", pendingGarment, false, image -> callback.accept(image, null));
                 return;
             }
             String name = data.getStringExtra(CareScanActivity.PHOTO);

@@ -36,7 +36,7 @@ final class WardrobeStore extends SQLiteOpenHelper {
 
     static final class Garment {
         long id;
-        String name = "", type = "", brand = "", fabric = "", original = "", photo = "",
+        String name = "", type = "", brand = "", fabric = "", original = "", photo = "", processed = "",
                 care = "", symbols = "", sourceText = "", labelText = "", created = LocalDate.now().toString();
         int seasons, washEvery = 10, idleDays = 90;
         boolean favorite, dirty, stored, archived;
@@ -71,7 +71,7 @@ final class WardrobeStore extends SQLiteOpenHelper {
     };
 
     WardrobeStore(Context context) {
-        super(context, "wardrobe.sqlite", null, 3);
+        super(context, "wardrobe.sqlite", null, 4);
         photos = new File(context.getFilesDir(), "photos");
     }
 
@@ -81,7 +81,7 @@ final class WardrobeStore extends SQLiteOpenHelper {
         db.execSQL("CREATE TABLE garment(id INTEGER PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL, "
                 + "brand TEXT, fabric TEXT, original TEXT, photo TEXT, seasons INTEGER, favorite INTEGER, dirty INTEGER, "
                 + "stored INTEGER, care TEXT, symbols TEXT, source_text TEXT, label_text TEXT, wash_every INTEGER, idle_days INTEGER, created TEXT, "
-                + "cutout_left INTEGER, cutout_top INTEGER, archived INTEGER NOT NULL DEFAULT 0)");
+                + "cutout_left INTEGER, cutout_top INTEGER, archived INTEGER NOT NULL DEFAULT 0, processed TEXT NOT NULL DEFAULT '')");
         db.execSQL("CREATE TABLE color(garment INTEGER REFERENCES garment(id) ON DELETE CASCADE, "
                 + "position INTEGER, name TEXT, rgb INTEGER, percent INTEGER, is_primary INTEGER, PRIMARY KEY(garment,position))");
         db.execSQL("CREATE TABLE wash(id INTEGER PRIMARY KEY, garment INTEGER REFERENCES garment(id) ON DELETE CASCADE, day TEXT)");
@@ -94,10 +94,16 @@ final class WardrobeStore extends SQLiteOpenHelper {
                 + "name TEXT, scene TEXT, day TEXT, UNIQUE(outfit,day))");
         db.execSQL("CREATE TABLE history_garment(history INTEGER REFERENCES history(id) ON DELETE CASCADE, "
                 + "garment INTEGER REFERENCES garment(id) ON DELETE CASCADE, PRIMARY KEY(history,garment))");
+        createDraftTable(db);
         db.execSQL("CREATE INDEX history_day ON history(day)");
         db.execSQL("CREATE INDEX history_garment_item ON history_garment(garment)");
         db.execSQL("CREATE INDEX wash_item ON wash(garment)");
         db.execSQL("CREATE INDEX care_item ON care_event(garment)");
+    }
+
+    private static void createDraftTable(SQLiteDatabase db) {
+        db.execSQL("CREATE TABLE outfit_draft(id INTEGER PRIMARY KEY, outfit INTEGER REFERENCES outfit(id) ON DELETE CASCADE, "
+                + "day TEXT, name TEXT NOT NULL, scene TEXT NOT NULL, layers TEXT NOT NULL, mark_dirty INTEGER NOT NULL)");
     }
 
     @Override public void onUpgrade(SQLiteDatabase db, int from, int to) {
@@ -106,9 +112,19 @@ final class WardrobeStore extends SQLiteOpenHelper {
             db.execSQL("ALTER TABLE garment ADD COLUMN cutout_top INTEGER");
         }
         if (from < 3) db.execSQL("ALTER TABLE garment ADD COLUMN archived INTEGER NOT NULL DEFAULT 0");
+        if (from < 4) {
+            createDraftTable(db);
+            db.execSQL("ALTER TABLE garment ADD COLUMN processed TEXT NOT NULL DEFAULT ''");
+            db.execSQL("UPDATE garment SET processed=photo WHERE photo<>original");
+        }
     }
 
     List<Garment> garments() { return garments(false); }
+
+    long pendingWashCount() {
+        return DatabaseUtils.longForQuery(getReadableDatabase(),
+                "SELECT COUNT(*) FROM garment WHERE archived=0 AND dirty=1", null);
+    }
 
     List<Garment> garments(boolean archived) {
         List<Garment> result = new ArrayList<>();
@@ -133,6 +149,7 @@ final class WardrobeStore extends SQLiteOpenHelper {
         g.fabric = c.getString(4);
         g.original = c.getString(5);
         g.photo = c.getString(6);
+        g.processed = c.getString(c.getColumnIndexOrThrow("processed"));
         g.seasons = c.getInt(7);
         g.favorite = c.getInt(8) != 0;
         g.dirty = c.getInt(9) != 0;
@@ -155,13 +172,13 @@ final class WardrobeStore extends SQLiteOpenHelper {
         return g;
     }
 
-    void save(Garment g, Bitmap original, Bitmap cutout, Point origin) throws IOException {
+    void save(Garment g, Bitmap original, Bitmap cutout, Point origin, boolean useOriginal) throws IOException {
         String newOriginal = original == null ? g.original : writeImage(original);
-        String newPhoto = g.photo;
+        String newProcessed = original == null ? g.processed : "";
         long id = g.id;
         try {
-            if (cutout != null) newPhoto = cutout == original ? newOriginal : writeImage(cutout);
-            else if (original != null) newPhoto = newOriginal;
+            if (cutout != null && cutout != original) newProcessed = writeImage(cutout);
+            String newPhoto = useOriginal || newProcessed.isEmpty() ? newOriginal : newProcessed;
             Point newOrigin = cutout == null && original == null ? g.cutoutOrigin : origin;
 
             SQLiteDatabase db = getWritableDatabase();
@@ -174,6 +191,7 @@ final class WardrobeStore extends SQLiteOpenHelper {
                 v.put("fabric", g.fabric);
                 v.put("original", newOriginal);
                 v.put("photo", newPhoto);
+                v.put("processed", newProcessed);
                 if (newOrigin == null) {
                     v.putNull("cutout_left");
                     v.putNull("cutout_top");
@@ -182,9 +200,6 @@ final class WardrobeStore extends SQLiteOpenHelper {
                     v.put("cutout_top", newOrigin.y);
                 }
                 v.put("seasons", g.seasons);
-                v.put("favorite", g.favorite);
-                v.put("dirty", g.dirty);
-                v.put("stored", g.stored);
                 v.put("care", g.care);
                 v.put("symbols", g.symbols);
                 v.put("source_text", g.sourceText);
@@ -192,8 +207,14 @@ final class WardrobeStore extends SQLiteOpenHelper {
                 v.put("wash_every", g.washEvery);
                 v.put("idle_days", g.idleDays);
                 v.put("created", g.created);
-                if (id == 0) id = db.insertOrThrow("garment", null, v);
-                else if (db.update("garment", v, "id=?", arg(id)) != 1) throw new IllegalStateException("衣物已删除");
+                if (id == 0) {
+                    v.put("favorite", g.favorite);
+                    v.put("dirty", g.dirty);
+                    v.put("stored", g.stored);
+                    id = db.insertOrThrow("garment", null, v);
+                } else if (db.update("garment", v, "id=?", arg(id)) != 1) {
+                    throw new IllegalStateException("衣物已删除");
+                }
 
                 db.delete("color", "garment=?", arg(id));
                 for (int i = 0; i < g.colors.size(); i++) {
@@ -210,15 +231,16 @@ final class WardrobeStore extends SQLiteOpenHelper {
                 db.setTransactionSuccessful();
             } finally { db.endTransaction(); }
             g.cutoutOrigin = newOrigin;
+            g.photo = newPhoto;
         } catch (IOException | RuntimeException e) {
-            if (!newPhoto.equals(g.photo) && !newPhoto.equals(newOriginal)) deleteImage(newPhoto);
+            if (!newProcessed.equals(g.processed)) deleteImage(newProcessed);
             if (!newOriginal.equals(g.original)) deleteImage(newOriginal);
             throw e;
         }
-        if (!g.photo.equals(newPhoto) && !g.photo.equals(newOriginal)) deleteImage(g.photo);
-        if (!g.original.equals(newOriginal) && !g.original.equals(newPhoto)) deleteImage(g.original);
+        if (!g.processed.equals(newProcessed) && !g.processed.equals(g.original)) deleteImage(g.processed);
+        if (!g.original.equals(newOriginal)) deleteImage(g.original);
         g.id = id;
-        g.photo = newPhoto;
+        g.processed = newProcessed;
         g.original = newOriginal;
     }
 
@@ -241,10 +263,14 @@ final class WardrobeStore extends SQLiteOpenHelper {
         new File(photos, name).delete();
     }
 
+    Bitmap cachedImage(String name, int sample) {
+        return images.get(name + ":" + sample);
+    }
+
     Bitmap image(String name, int sample) {
         if (name == null || name.isEmpty()) return null;
         String key = name + ":" + sample;
-        Bitmap bitmap = images.get(key);
+        Bitmap bitmap = cachedImage(name, sample);
         if (bitmap == null) {
             BitmapFactory.Options opts = new BitmapFactory.Options();
             opts.inSampleSize = sample;
@@ -260,6 +286,17 @@ final class WardrobeStore extends SQLiteOpenHelper {
         getWritableDatabase().update("garment", values, "id=?", arg(id));
     }
 
+    void saveCareLabel(long id, String symbols, String text, String fabric, String care) {
+        ContentValues values = new ContentValues();
+        values.put("symbols", symbols);
+        if (!text.isEmpty()) values.put("label_text", text);
+        if (!fabric.isEmpty()) values.put("fabric", fabric);
+        if (!care.isEmpty()) values.put("care", care);
+        if (getWritableDatabase().update("garment", values, "id=?", arg(id)) != 1) {
+            throw new IllegalStateException("衣物已删除");
+        }
+    }
+
     void setSeasons(long id, int seasons) {
         ContentValues values = new ContentValues();
         values.put("seasons", seasons);
@@ -270,7 +307,7 @@ final class WardrobeStore extends SQLiteOpenHelper {
         int deleted = getWritableDatabase().delete("garment",
                 "id=? AND NOT EXISTS (SELECT 1 FROM history_garment AS h WHERE h.garment=garment.id)", arg(g.id));
         if (deleted == 0) return false;
-        deleteImage(g.photo);
+        deleteImage(g.processed);
         deleteImage(g.original);
         return true;
     }
@@ -279,13 +316,6 @@ final class WardrobeStore extends SQLiteOpenHelper {
         if (!"dirty".equals(field) && !"stored".equals(field) && !"favorite".equals(field)) throw new IllegalArgumentException(field);
         ContentValues v = new ContentValues();
         v.put(field, value);
-        getWritableDatabase().update("garment", v, "id=?", arg(id));
-    }
-
-    void reactivate(long id, boolean dirty) {
-        ContentValues v = new ContentValues();
-        v.put("stored", false);
-        v.put("dirty", dirty);
         getWritableDatabase().update("garment", v, "id=?", arg(id));
     }
 
@@ -311,7 +341,12 @@ final class WardrobeStore extends SQLiteOpenHelper {
             v.put("garment", id);
             v.put("day", day);
             db.insertOrThrow("wash", null, v);
-            if (markClean) state(id, "dirty", false);
+            if (markClean) {
+                ContentValues clean = new ContentValues();
+                clean.put("dirty", false);
+                clean.put("stored", false);
+                db.update("garment", clean, "id=?", arg(id));
+            }
             db.setTransactionSuccessful();
         } finally { db.endTransaction(); }
     }
@@ -395,22 +430,73 @@ final class WardrobeStore extends SQLiteOpenHelper {
 
     void deleteOutfit(long id) { getWritableDatabase().delete("outfit", "id=?", arg(id)); }
 
-    void saveOutfitAndWear(Outfit outfit, String day) {
+    record OutfitDraft(long id, Outfit outfit, LocalDate day, boolean markDirty) {}
+
+    List<OutfitDraft> outfitDrafts() {
+        List<OutfitDraft> drafts = new ArrayList<>();
+        try (Cursor c = getReadableDatabase().rawQuery(
+                "SELECT id,outfit,day,name,scene,layers,mark_dirty FROM outfit_draft ORDER BY id DESC", null)) {
+            while (c.moveToNext()) {
+                Outfit outfit = new Outfit();
+                outfit.id = c.getLong(1);
+                outfit.name = c.getString(3);
+                outfit.scene = c.getString(4);
+                try {
+                    org.json.JSONArray layers = new org.json.JSONArray(c.getString(5));
+                    for (int i = 0; i < layers.length(); i++) {
+                        org.json.JSONArray layer = layers.getJSONArray(i);
+                        outfit.layers.add(new Layer(layer.getLong(0), (float) layer.getDouble(1),
+                                (float) layer.getDouble(2), (float) layer.getDouble(3)));
+                    }
+                } catch (org.json.JSONException invalid) {
+                    android.util.Log.w("SmartWardrobe", "Unable to load draft " + c.getLong(0), invalid);
+                    continue;
+                }
+                LocalDate day = c.isNull(2) ? null : LocalDate.parse(c.getString(2));
+                drafts.add(new OutfitDraft(c.getLong(0), outfit, day, c.getInt(6) != 0));
+            }
+        }
+        return drafts;
+    }
+
+    long saveDraft(long id, Outfit outfit, LocalDate day, boolean markDirty) {
+        org.json.JSONArray layers = new org.json.JSONArray();
+        for (Layer layer : outfit.layers) {
+            layers.put(new org.json.JSONArray(java.util.Arrays.asList(layer.garment, layer.x, layer.y, layer.scale)));
+        }
+        ContentValues values = new ContentValues();
+        if (outfit.id != 0) values.put("outfit", outfit.id);
+        values.put("day", day == null ? null : day.toString());
+        values.put("name", outfit.name);
+        values.put("scene", outfit.scene);
+        values.put("layers", layers.toString());
+        values.put("mark_dirty", markDirty);
         SQLiteDatabase db = getWritableDatabase();
+        if (id == 0) return db.insertOrThrow("outfit_draft", null, values);
+        if (db.update("outfit_draft", values, "id=?", arg(id)) != 1) throw new IllegalStateException("草稿已删除");
+        return id;
+    }
+
+    void deleteDraft(long id) { getWritableDatabase().delete("outfit_draft", "id=?", arg(id)); }
+
+    void saveOutfit(Outfit outfit, long draftId, LocalDate day, boolean dirty) {
+        SQLiteDatabase db = getWritableDatabase();
+        long previousId = outfit.id;
         db.beginTransaction();
         try {
             save(outfit);
-            wear(outfit, outfit.scene, day);
+            if (day != null) wear(outfit, outfit.scene, day.toString(), dirty);
+            if (draftId != 0) deleteDraft(draftId);
             db.setTransactionSuccessful();
         } catch (RuntimeException e) {
-            outfit.id = 0;
+            outfit.id = previousId;
             throw e;
         } finally {
             db.endTransaction();
         }
     }
 
-    void wear(Outfit outfit, String scene, String day) {
+    void wear(Outfit outfit, String scene, String day, boolean dirty) {
         SQLiteDatabase db = getWritableDatabase();
         db.beginTransaction();
         try {
@@ -430,6 +516,11 @@ final class WardrobeStore extends SQLiteOpenHelper {
                 link.put("history", id);
                 link.put("garment", layer.garment);
                 db.insertWithOnConflict("history_garment", null, link, SQLiteDatabase.CONFLICT_IGNORE);
+                if (dirty) {
+                    ContentValues pending = new ContentValues();
+                    pending.put("dirty", true);
+                    db.update("garment", pending, "id=? AND archived=0", arg(layer.garment));
+                }
             }
             db.setTransactionSuccessful();
         } finally { db.endTransaction(); }
