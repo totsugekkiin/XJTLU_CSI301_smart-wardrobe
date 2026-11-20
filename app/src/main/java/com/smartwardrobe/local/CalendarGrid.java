@@ -44,11 +44,18 @@ final class CalendarGrid {
                 LocalDate date = month.atDay(number);
                 boolean hasRecord = recorded.test(date);
                 boolean disabled = maximum != null && date.isAfter(maximum);
-                String display = number + (hasRecord ? " ·" : "");
+                String display = Integer.toString(number);
                 TextView cell = date.equals(selected) ? ui.pill(display, true, () -> pick.accept(date))
                         : ui.ghost(display, () -> pick.accept(date));
                 if (date.equals(selected)) ui.click(cell, MainActivity.INK, 24, 0, () -> pick.accept(date));
                 cell.setPadding(0, 0, 0, 0);
+                if (hasRecord) {
+                    android.graphics.drawable.GradientDrawable dot = new android.graphics.drawable.GradientDrawable();
+                    dot.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+                    dot.setColor(date.equals(selected) ? android.graphics.Color.WHITE : MainActivity.INK);
+                    dot.setBounds(0, 0, ui.dp(3), ui.dp(3));
+                    cell.setCompoundDrawables(null, null, null, dot);
+                }
                 cell.setMinHeight(0);
                 cell.setContentDescription(date + (hasRecord ? " 有穿着记录" : ""));
                 cell.setSelected(date.equals(selected));

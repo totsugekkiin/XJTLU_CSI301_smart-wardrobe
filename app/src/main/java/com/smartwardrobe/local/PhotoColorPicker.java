@@ -24,7 +24,7 @@ final class PhotoColorPicker extends View {
         super(ui);
         this.selected = selected;
         density = getResources().getDisplayMetrics().density;
-        setBackgroundColor(MainActivity.SAND);
+        setBackgroundColor(MainActivity.PAPER);
         setContentDescription("照片取色，点按或拖动选择颜色");
         setFocusable(true);
         setClickable(true);

@@ -107,7 +107,7 @@ final class TaobaoImport {
         input.setMinLines(3);
         AlertDialog dialog = new AlertDialog.Builder(ui)
                 .setTitle("网购导入")
-                .setMessage("粘贴淘宝分享内容，或从相册选一张商品截图。")
+                .setMessage("粘贴淘宝链接，或选择商品截图。")
                 .setView(input)
                 .setNegativeButton("取消", null)
                 .setNeutralButton("选截图", (ignored, which) -> chooseScreenshot.run())
@@ -127,7 +127,7 @@ final class TaobaoImport {
             proceed.setOnClickListener(view -> {
                 Input parsed = parseInput(input.getText().toString());
                 if (parsed == null) {
-                    input.setError("请粘贴淘宝商品链接或分享内容");
+                    input.setError("请粘贴淘宝链接或分享内容");
                     return;
                 }
                 dialog.dismiss();
@@ -150,7 +150,7 @@ final class TaobaoImport {
             browse(input);
             return;
         }
-        ui.task("正在解析淘宝商品链接…", () -> {
+        ui.task("解析链接中…", () -> {
             try { return resolveShortLink(input.url, userAgent); }
             catch (IOException failure) { return null; }
         }, direct -> browse(direct == null ? input : new Input(direct, input.name)));
@@ -225,19 +225,19 @@ final class TaobaoImport {
         field.setHint("粘贴商品图片链接");
         field.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
         AlertDialog.Builder panel = new AlertDialog.Builder(ui)
-                .setTitle("用商品图片链接")
-                .setMessage("在手机浏览器打开商品，把主图单独打开，再从地址栏复制网址。回到衣橱粘贴。"
-                        + (name.isEmpty() ? "" : "\n已保留商品名：" + name))
+                .setTitle("图片链接导入")
+                .setMessage("在浏览器打开商品主图，复制图片地址后粘贴。"
+                        + (name.isEmpty() ? "" : "\n商品：" + name))
                 .setView(field)
                 .setNegativeButton("取消", null)
                 .setPositiveButton("预览图片", null);
-        if (productUrl != null) panel.setNeutralButton("打开商品链接", null);
+        if (productUrl != null) panel.setNeutralButton("打开商品页", null);
         AlertDialog dialog = panel.create();
         dialog.setOnShowListener(ignored -> {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(view -> {
                 Input parsed = parseInput(field.getText().toString());
                 if (parsed == null || !isImage(parsed.url)) {
-                    field.setError("请粘贴商品图片的完整网址");
+                    field.setError("请粘贴完整图片链接");
                     return;
                 }
                 dialog.dismiss();
@@ -247,7 +247,7 @@ final class TaobaoImport {
                 Intent open = new Intent(Intent.ACTION_VIEW, productUrl).addCategory(Intent.CATEGORY_BROWSABLE);
                 try { ui.startActivity(open); }
                 catch (ActivityNotFoundException failure) {
-                    field.setError("请用手机浏览器手动打开商品链接");
+                    field.setError("请在浏览器打开商品");
                 }
             });
         });
@@ -274,7 +274,7 @@ final class TaobaoImport {
         try { web = new WebView(ui); }
         catch (RuntimeException failure) {
             new AlertDialog.Builder(ui).setTitle("无法打开淘宝网页")
-                    .setMessage("当前设备无法使用应用内浏览器。可在系统浏览器打开商品后，粘贴图片地址导入。")
+                    .setMessage("请在浏览器打开商品，复制图片地址导入。")
                     .setPositiveButton("用图片地址", (d, w) -> imageFallback(input.name, input.url)).show();
             return;
         }
@@ -326,15 +326,15 @@ final class TaobaoImport {
 
     private void readImages(WebView web, String name, Runnable finish) {
         if (!canRead(web)) {
-            message("请先打开商品详情", "如果淘宝要求登录，请手动登录并等待商品图显示。");
+            message("请先打开商品详情", "登录后等待商品图加载。");
             return;
         }
         web.evaluateJavascript(READ_PAGE, result -> {
             if (!web.isAttachedToWindow() || !canRead(web)) return;
             Product product = product(result, name);
             if (product.images.isEmpty()) {
-                message("当前页面没有可导入的商品图",
-                        "等主图加载后重试，也可以长按商品图，或复制图片地址后重新导入。");
+                message("暂无可导入的商品图",
+                        "等待主图加载，或长按图片导入。也可使用图片地址。");
             } else preview(product, 0, finish);
         });
     }
@@ -372,7 +372,7 @@ final class TaobaoImport {
 
     private void preview(Product product, int index, Runnable finish) {
         Uri url = product.images.get(index);
-        ui.task("正在下载商品图…", () -> {
+        ui.task("下载图片中…", () -> {
             try { return download(url); }
             catch (IOException failure) { return null; }
         }, bitmap -> {
@@ -381,7 +381,7 @@ final class TaobaoImport {
                     .setTitle(total == 1 ? "商品图片" : "商品图片 " + (index + 1) + " / " + total)
                     .setNegativeButton("取消", null);
             if (bitmap == null) {
-                panel.setMessage("图片下载或解码失败。可返回网页，或尝试其他图片。");
+                panel.setMessage("图片读取失败 / 请返回或换一张");
             } else {
                 ImageView image = new ImageView(ui);
                 image.setImageBitmap(bitmap);

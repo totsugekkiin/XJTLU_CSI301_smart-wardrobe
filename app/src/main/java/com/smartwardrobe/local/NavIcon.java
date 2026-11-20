@@ -9,6 +9,12 @@ import android.view.View;
 final class NavIcon extends View {
     static final int ARCHIVE = 4;
     static final int FAVORITE = 5;
+    static final int CHECK = 6;
+    static final int CAMERA = 7;
+    static final int PHOTOS = 8;
+    static final int SHOPPING = 9;
+    static final int EDIT = 10;
+    static final int BACK = 11, MORE = 12, COMPARE = 13, ADJUST = 14, CLOSE = 15, PLUS = 16, TICK = 17;
     private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path path = new Path();
     private final int icon;
@@ -26,9 +32,63 @@ final class NavIcon extends View {
         setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
     }
 
+    NavIcon(Context context, int icon, boolean active, int color) {
+        this(context, icon, active);
+        stroke.setColor(color);
+    }
+
     @Override protected void onDraw(Canvas canvas) {
         canvas.scale(getWidth() / 24f, getHeight() / 24f);
         switch (icon) {
+            case BACK -> line(canvas, 15, 4, 7, 12, 15, 20);
+            case MORE -> {
+                stroke.setStyle(Paint.Style.FILL);
+                for (int y : new int[]{5, 12, 19}) canvas.drawCircle(12, y, 1.5f, stroke);
+            }
+            case COMPARE -> {
+                canvas.drawRoundRect(3, 4, 21, 20, 1.5f, 1.5f, stroke);
+                line(canvas, 12, 2, 12, 22);
+                line(canvas, 5, 16, 8, 12, 10, 14);
+                canvas.drawCircle(17, 8, 1, stroke);
+            }
+            case ADJUST -> {
+                for (int y : new int[]{5, 12, 19}) canvas.drawLine(3, y, 21, y, stroke);
+                canvas.drawCircle(8, 5, 2, stroke);
+                canvas.drawCircle(16, 12, 2, stroke);
+                canvas.drawCircle(10, 19, 2, stroke);
+            }
+            case CLOSE -> { line(canvas, 6, 6, 18, 18); line(canvas, 18, 6, 6, 18); }
+            case PLUS -> { line(canvas, 5, 12, 19, 12); line(canvas, 12, 5, 12, 19); }
+            case TICK -> line(canvas, 4, 12, 9, 17, 20, 6);
+            case CAMERA -> {
+                line(canvas, 3, 6, 7, 6, 9, 3, 15, 3, 17, 6, 21, 6, 21, 20, 3, 20, 3, 6);
+                canvas.drawCircle(12, 13, 4, stroke);
+            }
+            case PHOTOS -> {
+                line(canvas, 3, 16, 3, 3, 17, 3);
+                canvas.drawRoundRect(7, 7, 21, 21, 1.5f, 1.5f, stroke);
+                canvas.drawCircle(16, 11, 1, stroke);
+                line(canvas, 7, 17, 11, 13, 15, 17, 17, 15, 21, 19);
+            }
+            case SHOPPING -> {
+                canvas.drawRoundRect(4, 7, 20, 21, 1.5f, 1.5f, stroke);
+                path.reset();
+                path.moveTo(8, 9);
+                path.lineTo(8, 6);
+                path.cubicTo(8, 1, 16, 1, 16, 6);
+                path.lineTo(16, 9);
+                canvas.drawPath(path, stroke);
+            }
+            case EDIT -> {
+                line(canvas, 14, 4, 4, 14, 3, 21, 10, 20, 20, 10, 14, 4);
+                line(canvas, 14, 4, 17, 1, 23, 7, 20, 10);
+                line(canvas, 4, 14, 10, 20);
+            }
+            case CHECK -> {
+                stroke.setColor(android.graphics.Color.WHITE);
+                stroke.setStrokeWidth(2.3f);
+                line(canvas, 4, 12, 9, 17, 20, 6);
+            }
             case 0 -> {
                 line(canvas, 4, 4, 8, 2, 10, 5, 14, 5, 16, 2, 20, 4, 23, 8, 19, 11,
                         17, 9, 17, 21, 7, 21, 7, 9, 5, 11, 1, 8, 4, 4);

@@ -413,6 +413,19 @@ final class WardrobeStore extends SQLiteOpenHelper {
         getWritableDatabase().update("garment", v, "id=?", arg(id));
     }
 
+    int markDirty(Set<Long> ids) {
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try {
+            ContentValues values = new ContentValues();
+            values.put("dirty", true);
+            int count = 0;
+            for (long id : ids) count += db.update("garment", values, "id=? AND archived=0", arg(id));
+            db.setTransactionSuccessful();
+            return count;
+        } finally { db.endTransaction(); }
+    }
+
     void takeOut(List<Garment> garments, boolean needsWash) {
         SQLiteDatabase db = getWritableDatabase();
         db.beginTransaction();
@@ -424,6 +437,21 @@ final class WardrobeStore extends SQLiteOpenHelper {
                 db.update("garment", values, "id=? AND archived=0 AND stored=1", arg(garment.id));
             }
             db.setTransactionSuccessful();
+        } finally { db.endTransaction(); }
+    }
+
+    boolean takeOutReady(long id) {
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try {
+            ContentValues values = new ContentValues();
+            values.put("stored", false);
+            // "Direct wear" explicitly confirms cleanliness, including an earlier dirty flag.
+            values.put("dirty", false);
+            boolean changed = db.update("garment", values, "id=? AND archived=0 AND stored=1", arg(id)) > 0;
+            if (changed) checked(id, "换季检查完成");
+            db.setTransactionSuccessful();
+            return changed;
         } finally { db.endTransaction(); }
     }
 

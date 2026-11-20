@@ -122,7 +122,7 @@ public final class CareScanActivity extends FragmentActivity {
         back.setTextSize(24);
         header.addView(back, new LinearLayout.LayoutParams(dp(48), dp(48)));
         TextView title = text("扫描洗标", 24);
-        title.setTypeface(Typeface.create("serif", Typeface.BOLD));
+        title.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
         title.setAccessibilityHeading(true);
         header.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
         page.addView(header);
@@ -165,7 +165,7 @@ public final class CareScanActivity extends FragmentActivity {
 
         LinearLayout scanInfo = new LinearLayout(this);
         scanInfo.setGravity(Gravity.CENTER_VERTICAL);
-        status = text("正在打开相机", 14);
+        status = text("打开相机中…", 14);
         status.setGravity(Gravity.CENTER_VERTICAL);
         status.setTextColor(MUTED);
         status.setMinHeight(dp(48));
@@ -245,7 +245,7 @@ public final class CareScanActivity extends FragmentActivity {
         super.onRequestPermissionsResult(request, permissions, grants);
         if (request != CAMERA_PERMISSION || isFinishing()) return;
         if (grants.length > 0 && grants[0] == PackageManager.PERMISSION_GRANTED) startCamera();
-        else status.setText("相机未授权 · 可从相册导入");
+        else status.setText("相机未授权 / 请从相册导入");
     }
 
     private void startCamera() {
@@ -286,13 +286,13 @@ public final class CareScanActivity extends FragmentActivity {
                     previewCover.setVisibility(streaming ? View.GONE : View.VISIBLE);
                     overlay.setVisibility(streaming ? View.VISIBLE : View.INVISIBLE);
                     resetScan();
-                    status.setText(streaming ? "扫描中" : "正在打开相机");
+                    status.setText(streaming ? "扫描中" : "打开相机中…");
                     if (streaming) focus(camera, viewfinder.getWidth() / 2f, viewfinder.getHeight() / 2f, false);
                 });
             } catch (Exception | LinkageError e) {
                 Log.w("SmartWardrobe", "Open care camera", e);
                 if (analysis != null) analysis.clearAnalyzer();
-                status.setText("相机不可用 · 可从相册导入");
+                status.setText("相机不可用 / 请从相册导入");
             }
         }, ContextCompat.getMainExecutor(this));
     }
@@ -343,7 +343,7 @@ public final class CareScanActivity extends FragmentActivity {
             if (show) {
                 focusRequest++;
                 overlay.hideFocusMarker();
-                showFocusFeedback("当前镜头不支持点按对焦");
+                showFocusFeedback("当前镜头不支持对焦");
             }
             return;
         }
@@ -366,7 +366,7 @@ public final class CareScanActivity extends FragmentActivity {
                 Log.d("SmartWardrobe", "Care focus did not complete", e);
             }
             overlay.focusResult(focused);
-            showFocusFeedback(focused ? "已对焦" : "未能合焦 · 稍微拉远");
+            showFocusFeedback(focused ? "已对焦" : "未能合焦 / 稍微拉远");
         }, ContextCompat.getMainExecutor(this));
     }
 
@@ -412,8 +412,8 @@ public final class CareScanActivity extends FragmentActivity {
             return;
         }
         setReview(frame, hits);
-        String message = failed ? "正在重试识别" : hits.isEmpty() ? "扫描中" : "扫描中 · " + hits.stream()
-                .map(ImageAnalysis.SymbolHit::meaning).distinct().collect(Collectors.joining(" · "));
+        String message = failed ? "重试中…" : hits.isEmpty() ? "扫描中" : "扫描中 / " + hits.stream()
+                .map(hit -> MainActivity.cleanText(hit.meaning())).distinct().collect(Collectors.joining(" / "));
         if (!message.contentEquals(status.getText())) status.setText(message);
     }
 

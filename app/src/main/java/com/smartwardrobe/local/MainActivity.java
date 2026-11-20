@@ -44,18 +44,20 @@ import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 
 public final class MainActivity extends ComponentActivity {
-    static final int PAPER = Color.WHITE, CARD = Color.WHITE, INK = 0xff101010, MUTED = 0xff686868,
+    static final int PAPER = Color.WHITE, CARD = Color.WHITE, INK = 0xff111111, MUTED = 0xff686868,
             SAND = 0xfff4f4f3, STROKE = 0xffe4e4e4;
-    private static final int DESTRUCTIVE = 0xffa12424;
+    private static final int DESTRUCTIVE = INK;
     static final String[] SEASONS = {"春", "夏", "秋", "冬"};
     static final String[] TYPES = {"上衣", "T 恤", "衬衫", "针织衫", "背心", "吊带", "外套", "风衣", "西装", "夹克",
             "短裤", "长裤", "牛仔裤", "工装裤", "半裙", "连衣裙", "鞋子", "配饰", "其他"};
     private static final int PICK = 14, CAMERA = 15, SCAN_CARE = 16, PHOTO_PERMISSION = 17;
     private static final int PICK_BATCH = 18;
+    private static final int COARSE_WEATHER = 19;
 
     WardrobeStore db;
     ClosetScreens closet;
     OutfitScreens outfits;
+    SeasonWeather weather;
     LinearLayout body;
     private Runnable back;
     int tab;
@@ -64,6 +66,13 @@ public final class MainActivity extends ComponentActivity {
     private volatile ScrollView pageScroll;
     private View outgoingPage;
     private View animatedPage;
+    private SlidingTabs navigationStrip;
+    private int renderedTab;
+    private boolean heroOpening;
+    private android.graphics.drawable.Drawable heroDrawable;
+    private android.graphics.RectF heroSource;
+    private ValueAnimator heroAnimator;
+    private ImageView heroOverlay, heroTarget;
     private final ArrayList<PagePosition> pagePath = new ArrayList<>();
     private final Map<Object, PagePosition> tabPositions = new HashMap<>();
     private final ExecutorService photoLoader = Executors.newFixedThreadPool(2);
@@ -100,6 +109,7 @@ public final class MainActivity extends ComponentActivity {
         super.onCreate(state);
         if (android.os.Build.VERSION.SDK_INT >= 30) getWindow().setDecorFitsSystemWindows(false);
         db = new WardrobeStore(this);
+        weather = new SeasonWeather(this, () -> { if (closet != null) closet.weatherChanged(); });
         garmentDetector = new ImageAnalysis.YoloGarment(this);
         textReader = new ImageAnalysis.BundledText();
         colorReader = new GarmentColors();
@@ -148,11 +158,47 @@ public final class MainActivity extends ComponentActivity {
     }
 
     @Override protected void onDestroy() {
+        if (weather != null) weather.close();
         finishPageTransition();
         pageScroll = null;
         photoLoader.shutdownNow();
         worker.shutdown();
         super.onDestroy();
+    }
+
+    @Override protected void onStart() {
+        super.onStart();
+        if (weather != null) weather.refreshIfDue();
+        if (closet != null) closet.weatherChanged();
+    }
+
+    @Override protected void onStop() {
+        if (weather != null) weather.stopLocationWhenHidden();
+        super.onStop();
+    }
+
+    void ensureWeatherPermission(boolean explicit) {
+        if (weather.hasPermission()) { weather.refreshIfDue(); return; }
+        if (!explicit && weather.permissionAsked()) return;
+        if (explicit && weather.permissionAsked()
+                && !shouldShowRequestPermissionRationale(android.Manifest.permission.ACCESS_COARSE_LOCATION)) {
+            startActivity(new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.parse("package:" + getPackageName())));
+            return;
+        }
+        weather.markPermissionAsked();
+        requestPermissions(new String[]{android.Manifest.permission.ACCESS_COARSE_LOCATION}, COARSE_WEATHER);
+    }
+
+    boolean isPage(Object key) { return !pagePath.isEmpty() && pagePath.get(pagePath.size() - 1).key.equals(key); }
+
+    void secondaryHeaderAction() {
+        LinearLayout heading = (LinearLayout) ((LinearLayout) root.getChildAt(0)).getChildAt(0);
+        View action = heading.getChildAt(heading.getChildCount() - 1);
+        GradientDrawable outline = shape(PAPER, 0, 0);
+        outline.setStroke(1, INK);
+        action.setBackground(outline);
+        if (action instanceof TextView text) { text.setTextColor(INK); text.setTextSize(13); }
     }
 
     void openTab(int index) {
@@ -174,7 +220,161 @@ public final class MainActivity extends ComponentActivity {
         root.addView(bar, root.getChildCount() - 1, new LinearLayout.LayoutParams(-1, -2));
     }
 
+    TextView garmentPage(Object key, Runnable exit, Runnable save) {
+        page(key, "", "", exit, null, null);
+        root.getChildAt(1).setVisibility(View.GONE);
+        LinearLayout heading = (LinearLayout) ((LinearLayout) root.getChildAt(0)).getChildAt(0);
+        heading.removeAllViews();
+        FrameLayout previous = new FrameLayout(this);
+        previous.setContentDescription("返回");
+        previous.addView(new NavIcon(this, NavIcon.BACK, false, 0xff111111),
+                new FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER));
+        click(previous, Color.TRANSPARENT, 0, 0, exit);
+        heading.addView(previous, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        heading.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1));
+        TextView button = pill("保存", true, save);
+        click(button, 0xff111111, 8, 0, save);
+        button.setVisibility(View.GONE);
+        heading.addView(button, new LinearLayout.LayoutParams(-2, dp(40)));
+        body.setPadding(0, 0, 0, dp(24));
+        return button;
+    }
+
+    /** Minimal two-row closet header: garment count with an optional add action, then the filter bar. */
+    TextView closetPage(String count, Runnable add, View filterBar) {
+        page("closet", "", "", null, null, null);
+        LinearLayout header = (LinearLayout) root.getChildAt(0);
+        header.setPadding(dp(20), dp(4), dp(20), dp(4));
+        LinearLayout top = (LinearLayout) header.getChildAt(0);
+        top.removeAllViews();
+        top.setMinimumHeight(dp(50));
+        TextView countView = text(count, 13, INK, false);
+        countView.setGravity(Gravity.CENTER_VERTICAL);
+        countView.setContentDescription(count);
+        top.addView(countView, new LinearLayout.LayoutParams(0, -2, 1));
+        if (add != null) {
+            TextView button = pill("+ 添加", true, add);
+            button.setTextSize(13);
+            button.setMinHeight(dp(40));
+            button.setMinimumHeight(dp(40));
+            button.setPadding(dp(14), 0, dp(14), 0);
+            top.addView(button, new LinearLayout.LayoutParams(-2, dp(40)));
+        }
+        if (filterBar != null) {
+            root.removeViewAt(1);
+            root.addView(filterBar, 1, new LinearLayout.LayoutParams(-1, dp(42)));
+        }
+        body.setPadding(dp(20), dp(14), dp(20), dp(28));
+        return countView;
+    }
+
+    void scrollTop() {
+        if (pageScroll != null) pageScroll.scrollTo(0, 0);
+    }
+
+    void alignGarmentTab(View tabs, View panel) {
+        ScrollView owner = pageScroll;
+        LinearLayout ownerBody = body;
+        ownerBody.getViewTreeObserver().addOnGlobalLayoutListener(new android.view.ViewTreeObserver.OnGlobalLayoutListener() {
+            @Override public void onGlobalLayout() {
+                boolean current = pageScroll == owner && isCurrentView(tabs) && panel.getVisibility() == View.VISIBLE;
+                int minimum = Math.max(0, owner.getHeight() - tabs.getHeight() - ownerBody.getPaddingBottom());
+                if (current && panel.getMinimumHeight() != minimum) { panel.setMinimumHeight(minimum); return; }
+                if (ownerBody.getViewTreeObserver().isAlive()) ownerBody.getViewTreeObserver().removeOnGlobalLayoutListener(this);
+                if (current) owner.scrollTo(0, tabs.getTop());
+            }
+        });
+        ownerBody.requestLayout();
+    }
+
+    void openGarmentHero(ImageView source, Runnable open) {
+        if (source == null || source.getDrawable() == null || !Motion.enabled()) { open.run(); return; }
+        heroDrawable = source.getDrawable();
+        heroSource = imageBounds(source);
+        heroOpening = true;
+        try { open.run(); } finally { heroOpening = false; }
+    }
+
+    private android.graphics.RectF imageBounds(ImageView image) {
+        int[] location = new int[2], origin = new int[2];
+        image.getLocationOnScreen(location);
+        frame.getLocationOnScreen(origin);
+        float width = image.getWidth() - image.getPaddingLeft() - image.getPaddingRight();
+        float height = image.getHeight() - image.getPaddingTop() - image.getPaddingBottom();
+        android.graphics.drawable.Drawable drawable = image.getDrawable();
+        float ratio = drawable == null || drawable.getIntrinsicHeight() <= 0 ? 1
+                : drawable.getIntrinsicWidth() / (float) drawable.getIntrinsicHeight();
+        float w = Math.min(width, height * ratio), h = w / ratio;
+        float x = location[0] - origin[0] + image.getPaddingLeft() + (width - w) / 2;
+        float y = location[1] - origin[1] + image.getPaddingTop() + (height - h) / 2;
+        return new android.graphics.RectF(x, y, x + w, y + h);
+    }
+
+    void finishGarmentHero(ImageView target) {
+        if (heroDrawable == null || heroSource == null) return;
+        android.graphics.drawable.Drawable drawable = heroDrawable;
+        android.graphics.RectF from = new android.graphics.RectF(heroSource);
+        heroDrawable = null;
+        heroSource = null;
+        heroTarget = target;
+        target.setAlpha(0f);
+        Runnable start = () -> {
+            if (!isCurrentView(target) || target.getDrawable() == null || !Motion.enabled()) { target.setAlpha(1f); return; }
+            android.graphics.RectF to = imageBounds(target);
+            heroTarget = target;
+            target.setAlpha(0f);
+            heroOverlay = new ImageView(this);
+            ImageView overlay = heroOverlay;
+            overlay.setImageDrawable(drawable);
+            overlay.setScaleType(ImageView.ScaleType.FIT_XY);
+            overlay.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            frame.addView(overlay, new FrameLayout.LayoutParams(Math.max(1, (int) from.width()), Math.max(1, (int) from.height())));
+            heroAnimator = ValueAnimator.ofFloat(0, 1);
+            heroAnimator.setDuration(300);
+            heroAnimator.setInterpolator(new android.view.animation.PathInterpolator(.215f, .61f, .355f, 1));
+            heroAnimator.addUpdateListener(value -> {
+                float t = (float) value.getAnimatedValue();
+                FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) overlay.getLayoutParams();
+                params.width = Math.max(1, Math.round(from.width() + (to.width() - from.width()) * t));
+                params.height = Math.max(1, Math.round(from.height() + (to.height() - from.height()) * t));
+                overlay.setLayoutParams(params);
+                overlay.setTranslationX(from.left + (to.left - from.left) * t);
+                overlay.setTranslationY(from.top + (to.top - from.top) * t);
+            });
+            heroAnimator.addListener(new android.animation.AnimatorListenerAdapter() {
+                @Override public void onAnimationEnd(android.animation.Animator animation) {
+                    frame.removeView(overlay);
+                    target.setAlpha(1f);
+                    if (heroOverlay == overlay) { heroOverlay = null; heroTarget = null; heroAnimator = null; }
+                }
+            });
+            heroAnimator.start();
+        };
+        if (target.isLaidOut()) start.run();
+        else target.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
+            @Override public void onLayoutChange(View view, int left, int top, int right, int bottom,
+                    int oldLeft, int oldTop, int oldRight, int oldBottom) {
+                if (right <= left || bottom <= top) return;
+                target.removeOnLayoutChangeListener(this);
+                start.run();
+            }
+        });
+    }
+
+    void fixedFooter(View footer) {
+        root.addView(footer, new LinearLayout.LayoutParams(-1, -2));
+    }
+
+    boolean isCurrentView(View view) {
+        for (android.view.ViewParent parent = view.getParent(); parent != null; parent = parent.getParent())
+            if (parent == root) return true;
+        return false;
+    }
+
     void page(Object key, String title, String subtitle, Runnable goBack, String action, Runnable onAction) {
+        boolean tabChanged = goBack == null && navigationStrip != null && renderedTab != tab;
+        float indicatorFrom = tabChanged ? navigationStrip.position() : -1;
+        navigationStrip = null;
         finishPageTransition();
         pendingPhotos.clear();
         PagePosition previousPosition = pagePath.isEmpty() ? null : pagePath.get(pagePath.size() - 1);
@@ -271,7 +471,7 @@ public final class MainActivity extends ComponentActivity {
                 LinearLayout item = vertical();
                 item.setGravity(Gravity.CENTER);
                 View indicator = new View(this);
-                indicator.setBackgroundColor(active ? INK : Color.TRANSPARENT);
+                indicator.setBackgroundColor(Color.TRANSPARENT);
                 item.addView(indicator, new LinearLayout.LayoutParams(dp(28), dp(2)));
                 gap(item, 9);
                 FrameLayout iconBox = new FrameLayout(this);
@@ -292,13 +492,17 @@ public final class MainActivity extends ComponentActivity {
                 click(item, PAPER, 0, 0, () -> { if (index != tab) openTab(index); });
                 nav.addView(item, new LinearLayout.LayoutParams(0, dp(61), 1));
             }
-            root.addView(nav);
+            int selected = tab == 4 ? 3 : tab == 3 ? 2 : tab;
+            navigationStrip = new SlidingTabs(this, nav, 4, selected, 28, true, indicatorFrom);
+            renderedTab = tab;
+            root.addView(navigationStrip);
         }
         showPage(previousRoot, opening, returning);
+        if (tabChanged) Motion.rise(body);
     }
 
     private void showPage(View previous, boolean opening, boolean returning) {
-        boolean animate = previous != null && previous.isLaidOut() && (opening || returning)
+        boolean animate = !heroOpening && previous != null && previous.isLaidOut() && (opening || returning)
                 && ValueAnimator.areAnimatorsEnabled();
         if (!animate && previous != null) frame.removeView(previous);
         frame.addView(root, animate && opening ? 1 : 0, new FrameLayout.LayoutParams(-1, -1));
@@ -317,6 +521,9 @@ public final class MainActivity extends ComponentActivity {
     }
 
     private void finishPageTransition() {
+        if (heroAnimator != null) { heroAnimator.cancel(); heroAnimator = null; }
+        if (heroOverlay != null) { frame.removeView(heroOverlay); heroOverlay = null; }
+        if (heroTarget != null) { heroTarget.setAlpha(1f); heroTarget = null; }
         if (animatedPage == null) return;
         animatedPage.animate().cancel();
         animatedPage.setTranslationX(0);
@@ -341,18 +548,23 @@ public final class MainActivity extends ComponentActivity {
 
     TextView text(String label, float size, int color, boolean bold) {
         TextView v = new TextView(this);
-        v.setText(label);
+        v.setText(cleanText(label));
         v.setTextSize(size);
+        v.setFontFeatureSettings("tnum");
         v.setTextColor(color);
         v.setIncludeFontPadding(true);
-        if (bold) v.setTypeface(null, Typeface.BOLD);
+        v.setTypeface(Typeface.create("sans-serif", bold ? Typeface.BOLD : Typeface.NORMAL));
         return v;
     }
 
     TextView editorial(String name, int size) {
         TextView v = text(name, size, INK, true);
-        v.setTypeface(Typeface.create("serif", Typeface.BOLD));
         return v;
+    }
+
+    static String cleanText(String value) {
+        return value == null ? "" : value.replaceAll("[ \\t]*[\\u00B7\\u2022\\u25CF][ \\t]*", "  ")
+                .replaceAll("[\\x{1F000}-\\x{1FAFF}\\u2600-\\u27BF\\u231A\\u231B\\u23E9-\\u23F3\\u23F8-\\u23FA\\u2B50\\u2B55\\uFE0E\\uFE0F\\u200D\\u20E3]", "");
     }
 
     GradientDrawable shape(int color, int radius, int stroke) {
@@ -366,8 +578,12 @@ public final class MainActivity extends ComponentActivity {
     void click(View view, int color, int radius, int stroke, Runnable action) {
         int ripple = color == INK ? 0x30ffffff : 0x16000000;
         view.setBackground(new RippleDrawable(ColorStateList.valueOf(ripple), shape(color, radius, stroke), null));
-        view.setOnClickListener(v -> action.run());
+        view.setOnClickListener(v -> {
+            if (color == INK) v.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK);
+            action.run();
+        });
         view.setFocusable(true);
+        Motion.press(view);
     }
 
     TextView pill(String label, boolean filled, Runnable action) {
@@ -387,15 +603,19 @@ public final class MainActivity extends ComponentActivity {
     TextView destructiveButton(String label, Runnable action) {
         TextView v = actionButton(label, 14, DESTRUCTIVE, false);
         v.setPadding(dp(10), dp(4), dp(10), dp(4));
-        click(v, PAPER, 8, 0, action);
+        click(v, PAPER, 8, 0, () -> {
+            v.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK);
+            action.run();
+        });
         return v;
     }
 
     private TextView actionButton(String label, int size, int color, boolean filled) {
         Button v = new Button(this, null, 0);
         v.setAllCaps(false);
-        v.setText(label);
+        v.setText(cleanText(label));
         v.setTextSize(size);
+        v.setFontFeatureSettings("tnum");
         v.setTypeface(null, Typeface.BOLD);
         v.setTextColor(new ColorStateList(new int[][]{{-android.R.attr.state_enabled}, {}},
                 new int[]{filled ? 0xffbdbdbd : 0xff737373, color}));
@@ -473,7 +693,7 @@ public final class MainActivity extends ComponentActivity {
         ImageView view = new ImageView(this);
         view.setScaleType(ImageView.ScaleType.FIT_CENTER);
         view.setImageBitmap(bitmap);
-        view.setBackground(shape(SAND, 0, 0));
+        view.setBackground(shape(PAPER, 0, 0));
         view.setClipToOutline(true);
         view.setLayoutParams(new LinearLayout.LayoutParams(-1, dp(height)));
         return view;
@@ -516,6 +736,7 @@ public final class MainActivity extends ComponentActivity {
         if (!label.isEmpty()) box.addView(text(label, 13, MUTED, true));
         EditText field = new EditText(this);
         field.setTextSize(15);
+        field.setFontFeatureSettings("tnum");
         field.setTextColor(INK);
         field.setHintTextColor(MUTED);
         field.setContentDescription(label);
@@ -628,10 +849,12 @@ public final class MainActivity extends ComponentActivity {
         action.setMinHeight(dp(48));
         action.setOnClickListener(view -> {
             action.setEnabled(false);
+            action.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK);
             owner.removeView(notice);
             undo.run();
         });
         notice.addView(action);
+        Motion.press(action);
         FrameLayout.LayoutParams p = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
         p.setMargins(dp(20), 0, dp(20), dp(76));
         owner.addView(notice, p);
@@ -684,7 +907,7 @@ public final class MainActivity extends ComponentActivity {
                 runOnUiThread(() -> {
                     if (isFinishing() || isDestroyed()) return;
                     progress.dismiss();
-                    toast("操作未完成，请重试或手动填写");
+                    toast("操作未完成 / 请重试或手动填写");
                 });
             }
         });
@@ -736,6 +959,11 @@ public final class MainActivity extends ComponentActivity {
 
     @Override public void onRequestPermissionsResult(int code, String[] permissions, int[] grants) {
         super.onRequestPermissionsResult(code, permissions, grants);
+        if (code == COARSE_WEATHER) {
+            weather.refreshIfDue();
+            closet.weatherChanged();
+            return;
+        }
         if (code != PHOTO_PERMISSION || imageCallback == null) return;
         if (grants.length > 0 && grants[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) {
             requestImage(pendingImagePurpose, pendingGarment, true, imageCallback);
@@ -788,7 +1016,7 @@ public final class MainActivity extends ComponentActivity {
                 android.graphics.RectF box = b.getParcelable("bounds");
                 if (box != null) hits.add(new ImageAnalysis.SymbolHit(b.getInt("group"), b.getString("meaning"), b.getFloat("score"), box));
             }
-            task("正在读取画面…", () -> {
+            task("读取画面中…", () -> {
                 try {
                     Bitmap image = android.graphics.BitmapFactory.decodeFile(file.getPath());
                     if (image == null) throw new java.io.IOException("Unreadable care frame");
@@ -809,7 +1037,7 @@ public final class MainActivity extends ComponentActivity {
             if (temp != null) temp.delete();
             return;
         }
-        task("正在读取图片…", () -> {
+        task("读取图片中…", () -> {
             try { return ImageAnalysis.decode(this, source); }
             finally { if (temp != null) temp.delete(); }
         }, callback);

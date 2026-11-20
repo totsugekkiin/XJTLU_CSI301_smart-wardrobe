@@ -80,13 +80,13 @@ final class OutfitScreens {
 
     void collection() {
         List<WardrobeStore.Outfit> outfits = db.outfits();
-        ui.page("outfits", "穿搭", outfits.isEmpty() ? "" : String.format(java.util.Locale.ROOT, "%02d", outfits.size()), null,
-                "＋ 新建搭配", () -> openDraft(null));
+        ui.page("outfits", "", outfits.isEmpty() ? "" : String.format(java.util.Locale.ROOT, "%02d", outfits.size()), null,
+                "+ 新建穿搭", () -> openDraft(null));
         if (draft != null) {
-            ui.body.addView(ui.pill("继续编辑 · " + draft.label(), false, draft::render));
+            ui.body.addView(ui.pill("继续编辑 / " + draft.label(), false, draft::render));
         }
         for (Draft pending : otherDrafts) {
-            ui.body.addView(ui.pill("继续编辑 · " + pending.label(), false, () -> {
+            ui.body.addView(ui.pill("继续编辑 / " + pending.label(), false, () -> {
                 selectDraft(pending);
                 pending.render();
             }));
@@ -125,13 +125,13 @@ final class OutfitScreens {
                 });
             }
             preview.setInteractive(false);
-            preview.setContentDescription("穿搭预览 · " + outfit.name);
+            preview.setContentDescription("穿搭预览 / " + outfit.name);
             card.addView(preview, new LinearLayout.LayoutParams(-1, ui.dp(236)));
             LinearLayout info = ui.vertical();
             info.setPadding(ui.dp(16), ui.dp(10), ui.dp(16), ui.dp(6));
             card.addView(info);
             info.addView(ui.editorial(outfit.name, 19));
-            info.addView(ui.text((outfit.scene.isEmpty() ? "" : outfit.scene + " · ") + outfit.layers.size() + " 件单品", 12, MUTED, false));
+            info.addView(ui.text((outfit.scene.isEmpty() ? "" : outfit.scene + " / ") + outfit.layers.size() + " 件单品", 12, MUTED, false));
             ui.gap(info, 10);
             LinearLayout actions = ui.row();
             actions.setBaselineAligned(false);
@@ -214,10 +214,10 @@ final class OutfitScreens {
             addButtons.clear();
             LinearLayout actions = ui.row();
             View chooseBase = baseColor == null ? ui.pill("设置基准色", false, this::chooseBaseColor)
-                    : ui.colorChip("基准色 · " + baseColor.name, baseColor.rgb, this::chooseBaseColor);
+                    : ui.colorChip("基准色：" + baseColor.name, baseColor.rgb, this::chooseBaseColor);
             actions.addView(chooseBase, new LinearLayout.LayoutParams(0, -2, 1));
             ui.body.addView(actions);
-            ui.section(ui.body, "全部衣橱颜色");
+            ui.section(ui.body, "衣橱颜色");
             if (palette.isEmpty()) ui.empty(ui.body, "暂无颜色", "");
             swatches(ui.body, palette, false);
 
@@ -233,7 +233,7 @@ final class OutfitScreens {
 
             ui.section(ui.body, selected == null ? (direction < 0 ? "衣橱单品" : directions[direction] + "单品")
                     : palette.getOrDefault(selected, ImageAnalysis.colorName(selected)) + "单品");
-            ui.actions(ui.body, new String[]{type.isEmpty() ? "全部类别" : type, "清除颜色筛选"},
+            ui.actions(ui.body, new String[]{type.isEmpty() ? "全部类别" : type, "清除颜色"},
                     () -> ui.closet.selectType("全部类别", value -> { type = value; render(); }),
                     () -> { selected = null; direction = -1; render(); });
             boolean found = false;
@@ -246,21 +246,21 @@ final class OutfitScreens {
                         && (color == null || !ImageAnalysis.matches(baseColor.rgb, color.rgb, direction))) continue;
                 found = true;
                 LinearLayout card = ui.closet.itemCard(ui.body, g, g.type, null);
-                TextView button = ui.pill("＋ 加入画布", false,
+                TextView button = ui.pill("+ 加入画布", false,
                         () -> withDraft(g, current -> ui.toast("已加入「" + current.label() + "」")));
                 addButtons.put(g.id, button);
                 card.addView(button);
             }
-            if (!found) ui.empty(ui.body, "没有匹配的衣物", "");
+            if (!found) ui.empty(ui.body, "无匹配单品", "");
             updateDraftStatus();
         }
 
         private void updateDraftStatus() {
             targetLabel.setText(target == null ? "从「" + base.name + "」开始搭配"
-                    : "当前画布 · " + target.label());
+                    : "当前画布：" + target.label());
             for (var entry : addButtons.entrySet()) {
                 boolean added = target != null && target.contains(entry.getKey());
-                entry.getValue().setText(added ? "已加入" : "＋ 加入画布");
+                entry.getValue().setText(added ? "已加入" : "+ 加入画布");
                 entry.getValue().setEnabled(!added);
             }
         }
@@ -285,7 +285,7 @@ final class OutfitScreens {
             int needed = current.contains(base.id) ? 0 : 1;
             if (garment.id != base.id && !current.contains(garment.id)) needed++;
             if (current.outfit.layers.size() + needed > 20) {
-                ui.toast("画布空间不足，一套穿搭最多 20 件");
+                ui.toast("每套最多 20 件单品");
                 return;
             }
             if (!current.contains(base.id)) current.add(base);
@@ -297,8 +297,8 @@ final class OutfitScreens {
         }
 
         private void chooseBaseColor() {
-            if (base.colors.isEmpty()) { ui.toast("可在衣物档案补充颜色"); return; }
-            Sheet sheet = new Sheet(ui, "选择配色基准", true);
+            if (base.colors.isEmpty()) { ui.toast("请先添加颜色"); return; }
+            Sheet sheet = new Sheet(ui, "选择基准色", true);
             for (var color : base.colors) {
                 sheet.option(color.name, color.rgb, () -> { baseColor = color; sheet.dismiss(); render(); });
             }
@@ -306,7 +306,7 @@ final class OutfitScreens {
         }
 
         private void suggest(int choice) {
-            if (baseColor == null) { ui.toast("请先为基准衣物添加颜色"); return; }
+            if (baseColor == null) { ui.toast("请先添加基准色"); return; }
             selected = null;
             direction = choice;
             render();
@@ -371,7 +371,7 @@ final class OutfitScreens {
         void render(Runnable back) {
             if (outfit.layers.removeIf(layer -> db.garment(layer.garment) == null)) persist();
             Runnable onFinish = day == null ? () -> ui.openTab(3) : this::returnToDay;
-            ui.page(this, "搭配画布", day == null ? label() : day.toString(), () -> leave(back),
+            ui.page(this, "穿搭画布", day == null ? label() : day.toString(), () -> leave(back),
                     day == null ? "保存" : null, day == null ? () -> save(onFinish, false, false) : null);
             canvas = new OutfitCanvas(ui, outfit.layers, photos::get, this::updateSelection);
             canvas.setOnTransformFinished(this::persist);
@@ -379,7 +379,7 @@ final class OutfitScreens {
             ui.gap(ui.body, 8);
             layerControls = ui.vertical();
             ui.body.addView(layerControls);
-            String[] labels = {"⊕\n放大", "⊖\n缩小", "↑\n置顶", "↓\n置底", "↻\n替换", "×\n移除"};
+            String[] labels = {"放大", "缩小", "置顶", "置底", "替换", "移除"};
             Runnable[] actions = {() -> resize(1.15f), () -> resize(1 / 1.15f),
                     () -> move(true), () -> move(false), this::replace, this::remove};
             int width = ui.getResources().getConfiguration().screenWidthDp - 40;
@@ -406,7 +406,7 @@ final class OutfitScreens {
             layerHeading = ui.text("画布图层", 15, INK, true);
             layerHeading.setAccessibilityHeading(true);
             layerHeader.addView(layerHeading, new LinearLayout.LayoutParams(0, -2, 1));
-            layerHeader.addView(ui.pill("＋ 添加单品", false, () -> chooseGarment(outfit.layers, null, this::add)));
+            layerHeader.addView(ui.pill("+ 添加单品", false, () -> chooseGarment(outfit.layers, null, this::add)));
             ui.body.addView(layerHeader);
             android.widget.HorizontalScrollView layers = new android.widget.HorizontalScrollView(ui);
             layers.setHorizontalScrollBarEnabled(false);
@@ -417,8 +417,8 @@ final class OutfitScreens {
 
             LinearLayout form = ui.card(ui.body);
             name = ui.field(form, "穿搭名称 *", outfit.name, false, false);
-            scene = ui.field(form, "场景标签", outfit.scene, false, false);
-            form.addView(ui.pill("选择常用场景", false, () -> {
+            scene = ui.field(form, "场景", outfit.scene, false, false);
+            form.addView(ui.pill("常用场景", false, () -> {
                 String[] scenes = {"工作", "休闲", "派对", "运动"};
                 ui.choose("选择场景", scenes, i -> scene.setText(scenes[i]));
             }));
@@ -431,13 +431,13 @@ final class OutfitScreens {
                     markDirty = checked;
                     persist();
                 });
-                form.addView(ui.pill("保存并记入当天", true, () -> save(onFinish, true, markDirty)));
+                form.addView(ui.pill("保存并登记", true, () -> save(onFinish, true, markDirty)));
                 ui.gap(form, 10);
-                form.addView(ui.pill("仅存为穿搭", false, () -> save(onFinish, false, false)));
+                form.addView(ui.pill("仅保存穿搭", false, () -> save(onFinish, false, false)));
             }
             ui.gap(form, 10);
-            form.addView(ui.ghost("放弃本次编辑", () -> ui.prompt("放弃本次编辑",
-                    "这次尚未保存的搭配和改动会丢失。", "放弃", () -> {
+            form.addView(ui.ghost("放弃编辑", () -> ui.prompt("放弃编辑",
+                    "未保存的内容将丢失。", "放弃", () -> {
                         if (id != 0) db.deleteDraft(id);
                         closeDraft(this);
                         onFinish.run();
@@ -477,7 +477,7 @@ final class OutfitScreens {
         }
 
         void add(WardrobeStore.Garment g) {
-            if (outfit.layers.size() >= 20) { ui.toast("一套穿搭最多添加 20 个图层"); return; }
+            if (outfit.layers.size() >= 20) { ui.toast("每套最多 20 件单品"); return; }
             for (WardrobeStore.Layer layer : outfit.layers) if (layer.garment == g.id) {
                 if (canvas != null) canvas.select(layer);
                 return;
@@ -496,10 +496,10 @@ final class OutfitScreens {
 
         private void replace() {
             WardrobeStore.Layer layer = canvas.selected();
-            if (layer == null) { ui.toast("请先选择一个图层"); return; }
+            if (layer == null) { ui.toast("请先选择图层"); return; }
             chooseGarment(outfit.layers, layer, g -> {
                 if (outfit.layers.stream().anyMatch(item -> item != layer && item.garment == g.id)) {
-                    ui.toast("该衣物已在画布上");
+                    ui.toast("已在画布中");
                     return;
                 }
                 load(g);
@@ -511,7 +511,7 @@ final class OutfitScreens {
 
         private void remove() {
             WardrobeStore.Layer layer = canvas.selected();
-            if (layer == null) { ui.toast("请先选择一个图层"); return; }
+            if (layer == null) { ui.toast("请先选择图层"); return; }
             outfit.layers.remove(layer);
             persist();
             canvas.select(null);
@@ -519,7 +519,7 @@ final class OutfitScreens {
 
         private void move(boolean top) {
             WardrobeStore.Layer layer = canvas.selected();
-            if (layer == null) { ui.toast("请先选择一个图层"); return; }
+            if (layer == null) { ui.toast("请先选择图层"); return; }
             outfit.layers.remove(layer);
             outfit.layers.add(top ? outfit.layers.size() : 0, layer);
             persist();
@@ -529,7 +529,7 @@ final class OutfitScreens {
         private void updateSelection() {
             if (layerList == null) return;
             WardrobeStore.Layer current = canvas.selected();
-            layerHeading.setText("画布图层（" + outfit.layers.size() + "）");
+            layerHeading.setText("图层 / " + outfit.layers.size());
             layerControls.setVisibility(current == null ? View.GONE : View.VISIBLE);
             layerList.removeAllViews();
             for (int i = outfit.layers.size() - 1; i >= 0; i--) {
@@ -547,7 +547,7 @@ final class OutfitScreens {
 
         private void save(Runnable onFinish, boolean record, boolean dirty) {
             captureFields();
-            if (outfit.name.isEmpty() || outfit.layers.isEmpty()) { ui.toast("请填写穿搭名称并添加单品"); return; }
+            if (outfit.name.isEmpty() || outfit.layers.isEmpty()) { ui.toast("请填写名称并添加单品"); return; }
             db.saveOutfit(outfit, id, record ? day : null, dirty);
             closeDraft(this);
             if (record) ui.toast("已保存穿搭和当天记录");
@@ -572,7 +572,7 @@ final class OutfitScreens {
     private void chooseGarment(List<WardrobeStore.Layer> layers, WardrobeStore.Layer replacing,
                                Consumer<WardrobeStore.Garment> selected) {
         List<WardrobeStore.Garment> garments = db.garments();
-        if (garments.isEmpty()) { ui.toast("请先在衣橱添加衣物"); return; }
+        if (garments.isEmpty()) { ui.toast("请先添加单品"); return; }
         Set<Long> canvasIds = layers.stream().map(layer -> layer.garment).collect(Collectors.toSet());
         List<WardrobeStore.Garment> canvas = garments.stream().filter(garment -> canvasIds.contains(garment.id))
                 .collect(Collectors.toList());
@@ -591,10 +591,10 @@ final class OutfitScreens {
     private void chooseWearItems(LocalDate day) {
         List<WardrobeStore.Garment> garments = db.garments();
         if (garments.isEmpty()) {
-            ui.prompt("衣橱暂无衣物", "先添加衣物，再记录当天穿着。", "去衣橱", () -> ui.openTab(0));
+            ui.prompt("衣橱暂无衣物", "添加单品后即可登记穿着。", "去衣橱", () -> ui.openTab(0));
             return;
         }
-        GarmentPicker.open(ui, "选择当天穿的衣物", garments, GarmentPicker.Filter.ALL, null, (filter, items) -> {
+        GarmentPicker.open(ui, "选择穿着单品", garments, GarmentPicker.Filter.ALL, null, (filter, items) -> {
             WardrobeStore.Outfit worn = new WardrobeStore.Outfit();
             worn.name = "当天穿着";
             for (var garment : items) worn.layers.add(newLayer(garment.id, worn.layers.size()));
@@ -603,8 +603,8 @@ final class OutfitScreens {
     }
 
     private void record(WardrobeStore.Outfit outfit) {
-        if (outfit.layers.isEmpty()) { ui.toast("请先为这套穿搭添加单品"); return; }
-        ui.date("实际穿着日期", LocalDate.now(), true, day -> recordOn(outfit, day));
+        if (outfit.layers.isEmpty()) { ui.toast("请先添加单品"); return; }
+        ui.date("穿着日期", LocalDate.now(), true, day -> recordOn(outfit, day));
     }
 
     private CheckBox markDirtyOption(LinearLayout parent) {
@@ -617,7 +617,7 @@ final class OutfitScreens {
     }
 
     private void recordOn(WardrobeStore.Outfit outfit, LocalDate day) {
-        Sheet sheet = new Sheet(ui, "记录穿着 · " + day, true);
+        Sheet sheet = new Sheet(ui, "记录穿着 / " + day, true);
         EditText scene = ui.field(sheet.content, "场景", outfit.scene, false, false);
         CheckBox saveOutfit = new CheckBox(ui);
         EditText outfitName = null;
@@ -630,7 +630,7 @@ final class OutfitScreens {
             nameFields.setVisibility(View.GONE);
             sheet.content.addView(nameFields);
             saveOutfit.setOnCheckedChangeListener((button, checked) ->
-                    nameFields.setVisibility(checked ? View.VISIBLE : View.GONE));
+                    Motion.expand(nameFields, checked));
         }
         CheckBox dirty = markDirtyOption(sheet.content);
         EditText nameField = outfitName;
@@ -658,7 +658,7 @@ final class OutfitScreens {
 
     void calendar() {
         List<WardrobeStore.History> history = db.history(month.toString());
-        ui.page("calendar", "日历", "", null, "回到今天", () -> {
+        ui.page("calendar", "", "", null, "回到今天", () -> {
             selectedDay = LocalDate.now();
             month = YearMonth.from(selectedDay);
             calendar();
@@ -684,31 +684,38 @@ final class OutfitScreens {
                 day -> { selectedDay = day; calendar(); });
         ui.gap(ui.body, 12);
         ui.rule(ui.body);
+        boolean hasRecords = history.stream().anyMatch(record -> record.date().equals(selectedDay.toString()));
+        ui.gap(ui.body, 16);
         LinearLayout dayBar = ui.row();
         dayBar.setGravity(Gravity.CENTER_VERTICAL);
-        dayBar.addView(ui.text(selectedDay + (selectedDay.equals(LocalDate.now()) ? "（今天）" : ""), 14, INK, true), new LinearLayout.LayoutParams(0, -2, 1));
-        if (!selectedDay.isAfter(LocalDate.now())) dayBar.addView(ui.pill("登记当天穿着", false, () -> {
-            List<WardrobeStore.Outfit> all = new ArrayList<>();
-            for (var outfit : db.outfits()) if (!outfit.layers.isEmpty()) all.add(outfit);
-            LocalDate day = selectedDay;
-            String[] options = all.isEmpty() ? new String[]{"从衣橱选单品", "去创建穿搭"}
-                    : new String[]{"从衣橱选单品", "去创建穿搭", "选择已保存的穿搭"};
-            ui.choose("登记当天穿着", options, mode -> {
-                if (mode == 0) chooseWearItems(day);
-                else if (mode == 1) {
-                    Draft opened = new Draft(new WardrobeStore.Outfit(), day);
-                    selectDraft(opened);
-                    opened.render();
-                } else ui.choose("选择已保存的穿搭", all.stream().map(o -> o.name).toArray(String[]::new),
-                        i -> recordOn(all.get(i), day));
-            });
-        }));
+        String[] weekdays = {"周一", "周二", "周三", "周四", "周五", "周六", "周日"};
+        String dateLabel = selectedDay.getMonthValue() + "月" + selectedDay.getDayOfMonth() + "日  "
+                + weekdays[selectedDay.getDayOfWeek().getValue() - 1];
+        dayBar.addView(ui.text(dateLabel, 14, MUTED, false), new LinearLayout.LayoutParams(0, -2, 1));
+        if (hasRecords && !selectedDay.isAfter(LocalDate.now()))
+            dayBar.addView(ui.ghost("+ 记一套", this::registerSelectedDay));
         ui.body.addView(dayBar);
-        ui.rule(ui.body);
-        boolean shown = false;
+        ui.gap(ui.body, 16);
+        if (!hasRecords) {
+            LinearLayout empty = ui.vertical();
+            empty.setGravity(Gravity.CENTER);
+            empty.setPadding(ui.dp(24), ui.dp(28), ui.dp(24), ui.dp(28));
+            empty.setMinimumHeight(ui.dp(204));
+            empty.setBackground(ui.shape(0xfff7f8fa, 16, 0));
+            empty.addView(new NavIcon(ui, 3, false, 0xffaaaaaa),
+                    new LinearLayout.LayoutParams(ui.dp(28), ui.dp(28)));
+            ui.gap(empty, 12);
+            TextView hint = ui.text("这天还没有穿搭记录", 14, 0xff888888, false);
+            hint.setGravity(Gravity.CENTER);
+            empty.addView(hint);
+            ui.gap(empty, 20);
+            TextView register = ui.pill("+ 登记当天穿着", true, this::registerSelectedDay);
+            register.setEnabled(!selectedDay.isAfter(LocalDate.now()));
+            empty.addView(register, new LinearLayout.LayoutParams(-2, -2));
+            ui.body.addView(empty, new LinearLayout.LayoutParams(-1, -2));
+        }
         for (WardrobeStore.History record : history) {
             if (!record.date().equals(selectedDay.toString())) continue;
-            shown = true;
             LinearLayout entry = ui.card(ui.body);
             entry.addView(ui.text(record.name(), 18, INK, true));
             if (!record.scene().isEmpty()) entry.addView(ui.text(record.scene(), 13, MUTED, false));
@@ -732,9 +739,25 @@ final class OutfitScreens {
             }
             ui.gap(entry, 5);
             entry.addView(ui.destructiveButton("移除穿着记录", () -> ui.confirmDestructive("移除穿着记录",
-                    "对应单品的穿着次数会更新。", "移除记录", () -> { db.deleteHistory(record.id()); calendar(); })));
+                    "移除后将更新穿着次数。", "移除记录", () -> { db.deleteHistory(record.id()); calendar(); })));
         }
-        if (!shown) ui.empty(ui.body, "当天暂无记录", "");
+    }
+
+    private void registerSelectedDay() {
+        List<WardrobeStore.Outfit> all = new ArrayList<>();
+        for (var outfit : db.outfits()) if (!outfit.layers.isEmpty()) all.add(outfit);
+        LocalDate day = selectedDay;
+        String[] options = all.isEmpty() ? new String[]{"从衣橱选单品", "新建穿搭"}
+                : new String[]{"从衣橱选单品", "新建穿搭", "选择穿搭"};
+        ui.choose("登记当天穿着", options, mode -> {
+            if (mode == 0) chooseWearItems(day);
+            else if (mode == 1) {
+                Draft opened = new Draft(new WardrobeStore.Outfit(), day);
+                selectDraft(opened);
+                opened.render();
+            } else ui.choose("选择穿搭", all.stream().map(o -> o.name).toArray(String[]::new),
+                    i -> recordOn(all.get(i), day));
+        });
     }
 
     private void switchMonth(int step) {

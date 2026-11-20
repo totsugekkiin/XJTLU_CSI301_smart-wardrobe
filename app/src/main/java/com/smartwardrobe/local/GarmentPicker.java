@@ -48,10 +48,10 @@ final class GarmentPicker {
         });
     }
 
-    static void open(MainActivity ui, String title, List<WardrobeStore.Garment> garments, Filter initial,
+    static Sheet open(MainActivity ui, String title, List<WardrobeStore.Garment> garments, Filter initial,
                      Consumer<Filter> apply, BiConsumer<Filter, List<WardrobeStore.Garment>> selected,
                      boolean multiple) {
-        open(ui, title, garments, initial, apply, selected, multiple, null);
+        return open(ui, title, garments, initial, apply, selected, multiple, null);
     }
 
     static void openForCanvas(MainActivity ui, String title, List<WardrobeStore.Garment> garments,
@@ -60,7 +60,7 @@ final class GarmentPicker {
                 false, new CanvasPalette(garments, canvas));
     }
 
-    private static void open(MainActivity ui, String title, List<WardrobeStore.Garment> garments, Filter initial,
+    private static Sheet open(MainActivity ui, String title, List<WardrobeStore.Garment> garments, Filter initial,
                              Consumer<Filter> apply, BiConsumer<Filter, List<WardrobeStore.Garment>> selected,
                              boolean multiple, CanvasPalette palette) {
         Sheet sheet = new Sheet(ui, title, true);
@@ -87,7 +87,7 @@ final class GarmentPicker {
                 if (palette != null && !palette.matches(garment)) continue;
                 if (multiple) {
                     CheckBox choice = new CheckBox(ui);
-                    choice.setText(garment.name + " · " + garment.type);
+                    choice.setText(garment.name + " / " + garment.type);
                     choice.setMinHeight(ui.dp(48));
                     choice.setChecked(picked.contains(garment));
                     choice.setOnCheckedChangeListener((button, checked) -> {
@@ -102,7 +102,7 @@ final class GarmentPicker {
                 });
             }
             int countMatches = list.getChildCount();
-            if (countMatches == 0) ui.empty(list, "没有匹配的衣物", "");
+            if (countMatches == 0) ui.empty(list, "无匹配单品", "");
             if (palette != null) palette.updateCount(ui, countMatches);
         };
         List<String> types = garments.stream().map(g -> g.type).filter(value -> !value.isEmpty()).distinct().sorted()
@@ -117,11 +117,12 @@ final class GarmentPicker {
             sheet.button("应用筛选", true, () -> { sheet.dismiss(); apply.accept(filter.get()); });
         }
         if (multiple) sheet.button("下一步", true, () -> {
-            if (picked.isEmpty()) { ui.toast("请至少选择一件衣物"); return; }
+            if (picked.isEmpty()) { ui.toast("请至少选择一件单品"); return; }
             sheet.dismiss();
             selected.accept(filter.get(), new ArrayList<>(picked));
         });
         sheet.show();
+        return sheet;
     }
 
     private static final class CanvasPalette {
@@ -150,8 +151,8 @@ final class GarmentPicker {
             if (!enabled || colors.isEmpty()) return;
             sample.setBackground(ui.shape(activeColor, 10, STROKE));
             String harmony = anchor == null ? "" : ClosetWheel.harmony(anchor.rgb, activeColor);
-            summary.setText(colors.get(activeColor) + " · " + count + " 件"
-                    + (harmony.isEmpty() ? "" : " · " + harmony));
+            summary.setText(colors.get(activeColor) + " / " + count + " 件"
+                    + (harmony.isEmpty() ? "" : " / " + harmony));
         }
 
         void bind(MainActivity ui, LinearLayout tabs, LinearLayout panel, Runnable refresh) {
@@ -173,7 +174,7 @@ final class GarmentPicker {
                 }
             }
             if (colors.isEmpty()) {
-                ui.empty(panel, "可选衣物暂无颜色记录", "");
+                ui.empty(panel, "暂无颜色记录", "");
             } else {
                 activeColor = colors.keySet().iterator().next();
                 ClosetWheel wheel = new ClosetWheel(ui, new ArrayList<>(colors.keySet()), rgb -> {
@@ -211,7 +212,7 @@ final class GarmentPicker {
             ui.space(tabs, 7);
             tabs.addView(ui.pill("圆盘色盘", showWheel, () -> showTab(ui, tabs, panel, true, refresh)),
                     new LinearLayout.LayoutParams(0, -2, 1));
-            panel.setVisibility(showWheel ? View.VISIBLE : View.GONE);
+            Motion.expand(panel, showWheel);
             refresh.run();
         }
     }

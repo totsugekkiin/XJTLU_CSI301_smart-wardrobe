@@ -1,6 +1,7 @@
 <resources>
     <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
-        <item name="android:fontFamily">sans</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:fontFeatureSettings">tnum</item>
         <item name="android:colorAccent">#000000</item>
         <item name="android:colorControlActivated">#000000</item>
         <item name="android:colorControlHighlight">#20000000</item>

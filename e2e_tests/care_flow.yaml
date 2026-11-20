@@ -1,0 +1,25 @@
+appId: com.smartwardrobe.local
+---
+# Original, specific care-label grouping remains in use.
+# Requires seed_regression.py on the backed-up dedicated emulator.
+- launchApp
+- tapOn: 洗护
+- assertVisible: 最高 30°C
+- assertNotVisible: 直接机洗
+- assertNotVisible: 轻柔/手洗
+- assertNotVisible: 不可水洗/送洗
+- tapOn: 换季检查
+- scrollUntilVisible:
+    element: 一键全部取出
+- tapOn: 一键全部取出
+- assertNotVisible: 一键全部取出
+- scrollUntilVisible:
+    element: 一键取出并送入待洗
+- tapOn: 一键取出并送入待洗
+- assertNotVisible: 一键取出并送入待洗
+- scrollUntilVisible:
+    element: 待洗分组.*
+    direction: UP
+- tapOn: 待洗分组.*
+- tapOn: 整组标记已洗
+- assertNotVisible: 最高 30°C

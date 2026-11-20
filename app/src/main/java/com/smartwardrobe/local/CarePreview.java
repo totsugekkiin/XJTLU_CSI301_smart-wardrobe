@@ -24,11 +24,12 @@ final class CarePreview extends View {
         this.bitmap = bitmap;
         this.hits = hits;
         this.openGroup = openGroup;
-        setContentDescription("洗标照片 · " + hits.size() + " 个候选框");
+        paint.setFontFeatureSettings("tnum");
+        setContentDescription("洗标照片 / " + hits.size() + " 个候选框");
     }
 
     @Override protected void onDraw(Canvas canvas) {
-        canvas.drawColor(MainActivity.SAND);
+        canvas.drawColor(MainActivity.PAPER);
         float scale = Math.min((float) getWidth() / bitmap.getWidth(), (float) getHeight() / bitmap.getHeight());
         float w = scale * bitmap.getWidth(), h = scale * bitmap.getHeight();
         float x = (getWidth() - w) / 2, y = (getHeight() - h) / 2;
