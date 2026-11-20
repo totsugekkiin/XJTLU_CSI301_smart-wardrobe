@@ -67,6 +67,17 @@ final class OutfitScreens {
         else otherDrafts.remove(closed);
     }
 
+    void garmentsDeleted(java.util.Set<Long> ids) {
+        java.util.Set<Long> saved = db.outfits().stream().map(outfit -> outfit.id).collect(Collectors.toSet());
+        List<Draft> pending = new ArrayList<>(otherDrafts);
+        if (draft != null) pending.add(draft);
+        for (Draft item : pending) {
+            item.outfit.layers.removeIf(layer -> ids.contains(layer.garment));
+            ids.forEach(id -> { item.photos.remove(id); item.names.remove(id); });
+            if (item.outfit.id != 0 && !saved.contains(item.outfit.id)) item.outfit.id = 0;
+        }
+    }
+
     void collection() {
         List<WardrobeStore.Outfit> outfits = db.outfits();
         ui.page("outfits", "穿搭", outfits.isEmpty() ? "" : String.format(java.util.Locale.ROOT, "%02d", outfits.size()), null,

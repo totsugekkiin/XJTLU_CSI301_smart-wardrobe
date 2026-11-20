@@ -84,7 +84,7 @@ public final class MainActivity extends ComponentActivity {
 
         PagePosition(Object key) { this.key = key; }
     }
-    private TextView feedback;
+    private View feedback;
     private Consumer<Bitmap> imageCallback;
     private java.util.function.BiConsumer<Bitmap, java.util.List<ImageAnalysis.SymbolHit>> careCallback;
     private Uri cameraUri;
@@ -157,6 +157,7 @@ public final class MainActivity extends ComponentActivity {
 
     void openTab(int index) {
         if (index == 2) index = 1;
+        if (index != 0) closet.clearSelection();
         tab = index;
         switch (index) {
             case 1 -> closet.care();
@@ -164,6 +165,13 @@ public final class MainActivity extends ComponentActivity {
             case 4 -> outfits.calendar();
             default -> closet.home();
         }
+    }
+
+    void selectionBar(View bar, Runnable exit) {
+        back = exit;
+        systemBack.setEnabled(true);
+        bar.setElevation(dp(6));
+        root.addView(bar, root.getChildCount() - 1, new LinearLayout.LayoutParams(-1, -2));
     }
 
     void page(Object key, String title, String subtitle, Runnable goBack, String action, Runnable onAction) {
@@ -556,8 +564,12 @@ public final class MainActivity extends ComponentActivity {
     }
 
     void date(String title, LocalDate initial, boolean history, Consumer<LocalDate> chosen) {
+        date(title, initial, history ? LocalDate.now() : null, null, chosen);
+    }
+
+    void date(String title, LocalDate initial, LocalDate maximum, String explanation, Consumer<LocalDate> chosen) {
         Sheet sheet = new Sheet(this, title, true);
-        LocalDate maximum = history ? LocalDate.now() : null;
+        if (maximum != null && initial.isAfter(maximum)) initial = maximum;
         LocalDate[] selected = {initial};
         YearMonth[] month = {YearMonth.from(initial)};
         LinearLayout header = row();
@@ -586,7 +598,12 @@ public final class MainActivity extends ComponentActivity {
         header.addView(next);
         sheet.content.addView(header);
         CalendarGrid.addTo(this, sheet.content, grid);
-        sheet.button("确认", true, () -> { sheet.dismiss(); chosen.accept(selected[0]); });
+        if (explanation != null) sheet.description(explanation);
+        sheet.button("确认", true, () -> {
+            if (maximum != null && selected[0].isAfter(maximum)) return;
+            sheet.dismiss();
+            chosen.accept(selected[0]);
+        });
         refresh.run();
         sheet.show();
     }
@@ -594,6 +611,41 @@ public final class MainActivity extends ComponentActivity {
     void toast(String message) { showFeedback(message, false); }
 
     void bottomNotice(String message) { showFeedback(message, true); }
+
+    void undoNotice(String message, Runnable undo) {
+        if (feedback != null && feedback.getParent() instanceof FrameLayout owner) owner.removeView(feedback);
+        FrameLayout owner = frame;
+        LinearLayout notice = row();
+        feedback = notice;
+        notice.setGravity(Gravity.CENTER_VERTICAL);
+        notice.setBackground(shape(INK, 8, 0));
+        notice.setPadding(dp(16), 0, dp(8), 0);
+        TextView label = text(message, 14, Color.WHITE, false);
+        notice.addView(label, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView action = text("撤销", 16, Color.WHITE, true);
+        action.setGravity(Gravity.CENTER);
+        action.setMinWidth(dp(64));
+        action.setMinHeight(dp(48));
+        action.setOnClickListener(view -> {
+            action.setEnabled(false);
+            owner.removeView(notice);
+            undo.run();
+        });
+        notice.addView(action);
+        FrameLayout.LayoutParams p = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
+        p.setMargins(dp(20), 0, dp(20), dp(76));
+        owner.addView(notice, p);
+        notice.announceForAccessibility(message + "，可撤销");
+        android.view.accessibility.AccessibilityManager accessibility =
+                (android.view.accessibility.AccessibilityManager) getSystemService(ACCESSIBILITY_SERVICE);
+        int timeout = 7000;
+        if (android.os.Build.VERSION.SDK_INT >= 29 && accessibility != null) {
+            timeout = accessibility.getRecommendedTimeoutMillis(timeout,
+                    android.view.accessibility.AccessibilityManager.FLAG_CONTENT_TEXT
+                    | android.view.accessibility.AccessibilityManager.FLAG_CONTENT_CONTROLS);
+        }
+        notice.postDelayed(() -> owner.removeView(notice), timeout);
+    }
 
     private void showFeedback(String message, boolean bottom) {
         if (feedback != null && feedback.getParent() instanceof FrameLayout owner) owner.removeView(feedback);

@@ -17,6 +17,8 @@ import java.io.IOException;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.LinkedHashSet;
 import java.util.UUID;
 
 final class WardrobeStore extends SQLiteOpenHelper {
@@ -71,7 +73,7 @@ final class WardrobeStore extends SQLiteOpenHelper {
     };
 
     WardrobeStore(Context context) {
-        super(context, "wardrobe.sqlite", null, 4);
+        super(context, "wardrobe.sqlite", null, 5);
         photos = new File(context.getFilesDir(), "photos");
     }
 
@@ -95,6 +97,7 @@ final class WardrobeStore extends SQLiteOpenHelper {
         db.execSQL("CREATE TABLE history_garment(history INTEGER REFERENCES history(id) ON DELETE CASCADE, "
                 + "garment INTEGER REFERENCES garment(id) ON DELETE CASCADE, PRIMARY KEY(history,garment))");
         createDraftTable(db);
+        db.execSQL("CREATE TABLE file_cleanup(name TEXT PRIMARY KEY)");
         db.execSQL("CREATE INDEX history_day ON history(day)");
         db.execSQL("CREATE INDEX history_garment_item ON history_garment(garment)");
         db.execSQL("CREATE INDEX wash_item ON wash(garment)");
@@ -117,6 +120,12 @@ final class WardrobeStore extends SQLiteOpenHelper {
             db.execSQL("ALTER TABLE garment ADD COLUMN processed TEXT NOT NULL DEFAULT ''");
             db.execSQL("UPDATE garment SET processed=photo WHERE photo<>original");
         }
+        if (from < 5) db.execSQL("CREATE TABLE file_cleanup(name TEXT PRIMARY KEY)");
+    }
+
+    @Override public void onOpen(SQLiteDatabase db) {
+        super.onOpen(db);
+        if (!db.isReadOnly()) cleanDeletedPhotos(db);
     }
 
     List<Garment> garments() { return garments(false); }
@@ -303,13 +312,98 @@ final class WardrobeStore extends SQLiteOpenHelper {
         getWritableDatabase().update("garment", values, "id=?", arg(id));
     }
 
-    boolean deleteGarment(Garment g) {
-        int deleted = getWritableDatabase().delete("garment",
-                "id=? AND NOT EXISTS (SELECT 1 FROM history_garment AS h WHERE h.garment=garment.id)", arg(g.id));
-        if (deleted == 0) return false;
-        deleteImage(g.processed);
-        deleteImage(g.original);
-        return true;
+    record Associations(int outfits, int histories) {
+        boolean any() { return outfits > 0 || histories > 0; }
+    }
+
+    Associations associations(long id) {
+        SQLiteDatabase db = getReadableDatabase();
+        return new Associations((int) DatabaseUtils.longForQuery(db,
+                "SELECT COUNT(DISTINCT outfit) FROM outfit_layer WHERE garment=?", arg(id)),
+                (int) DatabaseUtils.longForQuery(db,
+                "SELECT COUNT(*) FROM history_garment WHERE garment=?", arg(id)));
+    }
+
+    void archiveGarments(Set<Long> ids) {
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try {
+            for (long id : ids) archiveGarment(id, true);
+            db.setTransactionSuccessful();
+        } finally { db.endTransaction(); }
+    }
+
+    int deleteGarments(Set<Long> ids) {
+        SQLiteDatabase db = getWritableDatabase();
+        Set<Long> outfits = new LinkedHashSet<>(), histories = new LinkedHashSet<>();
+        int deleted = 0;
+        db.beginTransaction();
+        try {
+            for (long id : ids) {
+                Garment garment = garment(id);
+                if (garment == null) continue;
+                collectIds(db, "SELECT outfit FROM outfit_layer WHERE garment=?", id, outfits);
+                collectIds(db, "SELECT history FROM history_garment WHERE garment=?", id, histories);
+                for (String name : new String[]{garment.original, garment.processed, garment.photo}) {
+                    if (name == null || name.isEmpty()) continue;
+                    ContentValues file = new ContentValues();
+                    file.put("name", name);
+                    db.insertWithOnConflict("file_cleanup", null, file, SQLiteDatabase.CONFLICT_IGNORE);
+                }
+                // Foreign keys remove colors, washes, checks, saved layers and history links.
+                deleted += db.delete("garment", "id=?", arg(id));
+            }
+            // JSON draft layers have no foreign key; trim them in this same transaction.
+            for (OutfitDraft draft : outfitDrafts()) {
+                if (draft.outfit().layers.removeIf(layer -> ids.contains(layer.garment))) {
+                    saveDraft(draft.id(), draft.outfit(), draft.day(), draft.markDirty());
+                }
+            }
+            for (long id : outfits) {
+                if (DatabaseUtils.longForQuery(db, "SELECT COUNT(*) FROM outfit_layer WHERE outfit=?", arg(id)) != 0) continue;
+                // A draft can contain extra unsaved items: retain it independently of its empty source outfit.
+                ContentValues detached = new ContentValues();
+                detached.putNull("outfit");
+                db.update("outfit_draft", detached, "outfit=?", arg(id));
+                db.delete("outfit", "id=?", arg(id));
+            }
+            for (long id : histories) {
+                if (DatabaseUtils.longForQuery(db, "SELECT COUNT(*) FROM history_garment WHERE history=?", arg(id)) == 0)
+                    db.delete("history", "id=?", arg(id));
+            }
+            db.setTransactionSuccessful();
+        } finally { db.endTransaction(); }
+        // Files cannot join a SQLite transaction. Commit the cleanup queue first, then remove them;
+        // interrupted/failed cleanup is retried on the next database open.
+        cleanDeletedPhotos(db);
+        return deleted;
+    }
+
+    private void collectIds(SQLiteDatabase db, String sql, long garment, Set<Long> result) {
+        try (Cursor c = db.rawQuery(sql, arg(garment))) {
+            while (c.moveToNext()) result.add(c.getLong(0));
+        }
+    }
+
+    private void cleanDeletedPhotos(SQLiteDatabase db) {
+        List<String> pending = new ArrayList<>();
+        try (Cursor c = db.rawQuery("SELECT name FROM file_cleanup", null)) {
+            while (c.moveToNext()) pending.add(c.getString(0));
+        }
+        for (String name : pending) {
+            // A shared photo must survive while another garment still references it.
+            if (DatabaseUtils.longForQuery(db,
+                    "SELECT COUNT(*) FROM garment WHERE original=? OR processed=? OR photo=?",
+                    new String[]{name, name, name}) > 0) {
+                db.delete("file_cleanup", "name=?", new String[]{name});
+                continue;
+            }
+            if (!new File(name).getName().equals(name)) continue;
+            for (int sample : new int[]{1, 2, 4, 8}) images.remove(name + ":" + sample);
+            File file = new File(photos, name);
+            if (!file.exists() || file.delete()) db.delete("file_cleanup", "name=?", new String[]{name});
+            else android.util.Log.w("SmartWardrobe", "Photo cleanup will retry: " + name);
+        }
     }
 
     void state(long id, String field, boolean value) {
@@ -317,6 +411,20 @@ final class WardrobeStore extends SQLiteOpenHelper {
         ContentValues v = new ContentValues();
         v.put(field, value);
         getWritableDatabase().update("garment", v, "id=?", arg(id));
+    }
+
+    void takeOut(List<Garment> garments, boolean needsWash) {
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try {
+            ContentValues values = new ContentValues();
+            values.put("stored", false);
+            if (needsWash) values.put("dirty", true);
+            for (Garment garment : garments) {
+                db.update("garment", values, "id=? AND archived=0 AND stored=1", arg(garment.id));
+            }
+            db.setTransactionSuccessful();
+        } finally { db.endTransaction(); }
     }
 
     Usage usage(long id) {
@@ -333,21 +441,53 @@ final class WardrobeStore extends SQLiteOpenHelper {
         }
     }
 
-    void wash(long id, String day, boolean markClean) {
+    record WashChange(long record, long garment, boolean wasDirty) {}
+
+    List<WashChange> washToday(List<Garment> garments) {
+        SQLiteDatabase db = getWritableDatabase();
+        List<WashChange> changes = new ArrayList<>();
+        db.beginTransaction();
+        try {
+            String day = LocalDate.now().toString();
+            for (Garment item : garments) {
+                Garment current = garment(item.id);
+                if (current == null || current.archived) continue;
+                long record = wash(current.id, day, true);
+                changes.add(new WashChange(record, current.id, current.dirty));
+            }
+            db.setTransactionSuccessful();
+        } finally { db.endTransaction(); }
+        return changes;
+    }
+
+    void undoWash(List<WashChange> changes) {
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try {
+            for (WashChange change : changes) {
+                int removed = db.delete("wash", "id=? AND garment=?",
+                        new String[]{Long.toString(change.record()), Long.toString(change.garment())});
+                if (removed > 0) state(change.garment(), "dirty", change.wasDirty());
+            }
+            db.setTransactionSuccessful();
+        } finally { db.endTransaction(); }
+    }
+
+    long wash(long id, String day, boolean markClean) {
         SQLiteDatabase db = getWritableDatabase();
         db.beginTransaction();
         try {
             ContentValues v = new ContentValues();
             v.put("garment", id);
             v.put("day", day);
-            db.insertOrThrow("wash", null, v);
+            long record = db.insertOrThrow("wash", null, v);
             if (markClean) {
                 ContentValues clean = new ContentValues();
                 clean.put("dirty", false);
-                clean.put("stored", false);
                 db.update("garment", clean, "id=?", arg(id));
             }
             db.setTransactionSuccessful();
+            return record;
         } finally { db.endTransaction(); }
     }
 

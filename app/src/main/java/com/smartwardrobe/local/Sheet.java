@@ -77,6 +77,12 @@ final class Sheet extends Dialog {
         option(label, null, action);
     }
 
+    void destructiveOption(String label, Runnable action) {
+        TextView button = ui.destructiveButton(label, action);
+        button.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+        content.addView(button, new LinearLayout.LayoutParams(-1, -2));
+    }
+
     void option(String label, Integer color, Runnable action) {
         LinearLayout row = ui.row();
         row.setGravity(Gravity.CENTER_VERTICAL);
