@@ -656,6 +656,11 @@ final class OutfitScreens {
         sheet.show();
     }
 
+    void prepareOnboardingCalendar() {
+        selectedDay = LocalDate.now();
+        month = YearMonth.from(selectedDay);
+    }
+
     void calendar() {
         List<WardrobeStore.History> history = db.history(month.toString());
         ui.page("calendar", "", "", null, "回到今天", () -> {
@@ -682,11 +687,13 @@ final class OutfitScreens {
         CalendarGrid.populate(ui, card, month, selectedDay, null,
                 day -> history.stream().anyMatch(h -> h.date().equals(day.toString())),
                 day -> { selectedDay = day; calendar(); });
+        ui.coachTarget("calendar-grid", card);
         ui.gap(ui.body, 12);
         ui.rule(ui.body);
         boolean hasRecords = history.stream().anyMatch(record -> record.date().equals(selectedDay.toString()));
         ui.gap(ui.body, 16);
         LinearLayout dayBar = ui.row();
+        ui.coachTarget("calendar-day", dayBar);
         dayBar.setGravity(Gravity.CENTER_VERTICAL);
         String[] weekdays = {"周一", "周二", "周三", "周四", "周五", "周六", "周日"};
         String dateLabel = selectedDay.getMonthValue() + "月" + selectedDay.getDayOfMonth() + "日  "
@@ -710,6 +717,7 @@ final class OutfitScreens {
             empty.addView(hint);
             ui.gap(empty, 20);
             TextView register = ui.pill("+ 登记当天穿着", true, this::registerSelectedDay);
+            ui.coachTarget("calendar-day", register);
             register.setEnabled(!selectedDay.isAfter(LocalDate.now()));
             empty.addView(register, new LinearLayout.LayoutParams(-2, -2));
             ui.body.addView(empty, new LinearLayout.LayoutParams(-1, -2));

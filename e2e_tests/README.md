@@ -2,6 +2,10 @@
 
 ## 版本说明
 
+最终引导验收及边界验证见 [ONBOARDING-VALIDATION.md](ONBOARDING-VALIDATION.md)。补充执行入口为 `python e2e_tests/onboarding_edges.py`。
+
+聚光灯引导专项：安装当前构建后运行 `python e2e_tests/onboarding_ux.py`。脚本仅接受模拟器，先备份再测试空数据库的六步流程、遮罩触摸拦截、跳过与完成的持久化、筛选面板重播、已有衣物、横屏、大字体和进程恢复；最后恢复系统显示设置、原数据库与照片。截图和检查结果保存在忽略的 `results/onboarding-*/`。首次引导会遮住旧脚本的操作；运行历史脚本前可先完成或跳过引导。
+
 本目录保留多个版本阶段的回归脚本。2026-11-21 已精简全局 UI 文案并调整统一衣物页面，旧脚本中的按钮名、标题和部分布局断言可能需要按当前界面更新。下文是对应阶段的执行记录，不表示全部脚本已在最终文案版本重新通过。最新更新范围及已完成验证见仓库根目录的「更新说明.md」。`results/` 和日志仅保留本地，不提交个人数据或照片。
 
 本套件通过 Maestro 和 ADB/UIAutomator 点击真实界面，并读取 SQLite 主库与 WAL 检查结果。目标是专用 Android 模拟器，默认 `emulator-5572`；`device.py` 拒绝以手机序列号运行。使用 `WARDROBE_SERIAL`、`ADB` 可选择其他模拟器及 ADB 路径。

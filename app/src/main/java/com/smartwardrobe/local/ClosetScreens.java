@@ -46,6 +46,13 @@ final class ClosetScreens {
 
     void clearSelection() { selecting = false; selected.clear(); }
 
+    void prepareOnboarding() {
+        clearSelection();
+        filter = GarmentPicker.Filter.ALL;
+        filterSeason = -1;
+        favorites = false;
+    }
+
     private void exitSelection() { clearSelection(); home(); }
 
     private void toggleSelected(long id) {
@@ -74,7 +81,7 @@ final class ClosetScreens {
     void home() {
         List<WardrobeStore.Garment> garments = db.garments();
         if (garments.isEmpty()) {
-            countView = ui.closetPage("0 件单品", this::newGarment, null);
+            countView = ui.closetPage("0 件单品", this::newGarment, filterBar());
             LinearLayout panel = ui.card(ui.body);
             panel.addView(ui.text("衣橱暂无单品", 23, INK, true));
             ui.gap(panel, 13);
@@ -207,6 +214,7 @@ final class ClosetScreens {
                 chosen -> { filter = chosen; home(); ui.scrollTop(); },
                 (chosen, items) -> { filter = chosen; detail(items.get(0).id, this::home); }, false);
         picker.bottomLink("已归档", () -> { picker.dismiss(); archive(); });
+        picker.bottomLink("使用指南", () -> { picker.dismiss(); ui.replayGuide(); });
     }
 
     private void renderGrid(List<WardrobeStore.Garment> filtered) {
@@ -254,6 +262,7 @@ final class ClosetScreens {
                 if (i + j >= filtered.size()) { row.addView(new View(ui), p); continue; }
                 WardrobeStore.Garment g = filtered.get(i + j);
                 LinearLayout card = ui.vertical();
+                if (i == 0 && j == 0) ui.coachTarget("closet-first", card);
                 boolean checked = selected.contains(g.id);
                 ImageView[] heroSource = {null};
                 ui.click(card, CARD, 0, 0,
@@ -595,8 +604,11 @@ final class ClosetScreens {
         careHeader(pending);
         seasonalReminder(garments);
         ui.ensureWeatherPermission(false);
-        if (garments.isEmpty()) { careEmpty("暂无衣物"); return; }
-        meter(ui.body, "衣橱洁净度", garments.size() - pending, garments.size());
+        LinearLayout overview = ui.vertical();
+        ui.body.addView(overview);
+        meter(overview, "衣橱洁净度", garments.size() - pending, garments.size());
+        ui.coachTarget("care-main", overview);
+        if (garments.isEmpty()) { ui.gap(ui.body, 24); careEmpty("暂无衣物"); return; }
         ui.gap(ui.body, 24);
         var groups = new ArrayList<>(buckets.entrySet());
         groups.sort((a, b) -> {
@@ -607,6 +619,7 @@ final class ClosetScreens {
         else if (canBatch(groups.get(0).getKey()) && groups.get(0).getValue().size() > 1) {
             var first = groups.get(0);
             LinearLayout featured = careCard(ui.body);
+            ui.coachTarget("care-group", featured);
             featured.addView(ui.text("优先处理", 11, MUTED, false));
             featured.addView(ui.text(first.getKey(), 16, INK, true));
             ui.gap(featured, 8);
@@ -617,6 +630,8 @@ final class ClosetScreens {
         }
         for (var group : groups) {
             LinearLayout header = ui.row();
+            if (group == groups.get(0) && !(canBatch(group.getKey()) && group.getValue().size() > 1))
+                ui.coachTarget("care-group", header);
             header.setGravity(Gravity.CENTER_VERTICAL);
             header.addView(ui.text(group.getKey(), 14, INK, true), new LinearLayout.LayoutParams(0, -2, 1));
             header.addView(ui.text(group.getValue().size() + " 件", 12, MUTED, false));
@@ -687,6 +702,7 @@ final class ClosetScreens {
     }
 
     void weatherChanged() {
+        if (ui.guiding()) return;
         if (ui.isPage("wash-care")) care();
         else if (ui.isPage("seasonal-organize")) {
             if (!manualSeasonChoice) currentSeason = ui.weather.advice().season();

@@ -58,6 +58,7 @@ public final class MainActivity extends ComponentActivity {
     ClosetScreens closet;
     OutfitScreens outfits;
     SeasonWeather weather;
+    private OnboardingGuide onboarding;
     LinearLayout body;
     private Runnable back;
     int tab;
@@ -126,6 +127,7 @@ public final class MainActivity extends ComponentActivity {
             return insets;
         });
         setContentView(frame);
+        onboarding = new OnboardingGuide(this, frame, state);
         frame.getViewTreeObserver().addOnPreDrawListener(() -> {
             loadVisiblePhotos();
             return true;
@@ -146,10 +148,12 @@ public final class MainActivity extends ComponentActivity {
             }
             else if (!pendingImagePurpose.isEmpty()) imageCallback = closet.restoreImport(pendingImagePurpose, pendingGarment);
         }
+        onboarding.schedule();
     }
 
     @Override protected void onSaveInstanceState(Bundle state) {
         super.onSaveInstanceState(state);
+        if (onboarding != null) onboarding.save(state);
         state.putInt("tab", tab);
         state.putLong("canvasDraft", outfits.visibleDraftId());
         state.putString("purpose", pendingImagePurpose);
@@ -158,6 +162,7 @@ public final class MainActivity extends ComponentActivity {
     }
 
     @Override protected void onDestroy() {
+        if (onboarding != null) onboarding.close();
         if (weather != null) weather.close();
         finishPageTransition();
         pageScroll = null;
@@ -177,7 +182,18 @@ public final class MainActivity extends ComponentActivity {
         super.onStop();
     }
 
+    @Override protected void onResume() {
+        super.onResume();
+        if (onboarding != null) onboarding.resume();
+    }
+
+    @Override protected void onPause() {
+        if (onboarding != null) onboarding.pause();
+        super.onPause();
+    }
+
     void ensureWeatherPermission(boolean explicit) {
+        if (!explicit && guiding()) return;
         if (weather.hasPermission()) { weather.refreshIfDue(); return; }
         if (!explicit && weather.permissionAsked()) return;
         if (explicit && weather.permissionAsked()
@@ -191,6 +207,23 @@ public final class MainActivity extends ComponentActivity {
     }
 
     boolean isPage(Object key) { return !pagePath.isEmpty() && pagePath.get(pagePath.size() - 1).key.equals(key); }
+
+    boolean guiding() { return onboarding != null && onboarding.running(); }
+    void coachTarget(String key, View target) { if (onboarding != null) onboarding.register(key, target); }
+    void replayGuide() { if (onboarding != null) onboarding.replay(); }
+    void coachPageAccessibility(boolean enabled) {
+        if (root != null) {
+            root.setImportantForAccessibility(enabled ? View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+                    : View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+            root.setDescendantFocusability(enabled ? ViewGroup.FOCUS_AFTER_DESCENDANTS : ViewGroup.FOCUS_BLOCK_DESCENDANTS);
+        }
+    }
+    void prepareCoachPage() {
+        scrollTop();
+        body.animate().cancel();
+        body.setTranslationY(0);
+        body.setAlpha(1);
+    }
 
     void secondaryHeaderAction() {
         LinearLayout heading = (LinearLayout) ((LinearLayout) root.getChildAt(0)).getChildAt(0);
@@ -254,6 +287,7 @@ public final class MainActivity extends ComponentActivity {
         top.addView(countView, new LinearLayout.LayoutParams(0, -2, 1));
         if (add != null) {
             TextView button = pill("+ 添加", true, add);
+            coachTarget("closet-add", button);
             button.setTextSize(13);
             button.setMinHeight(dp(40));
             button.setMinimumHeight(dp(40));
@@ -372,6 +406,7 @@ public final class MainActivity extends ComponentActivity {
     }
 
     void page(Object key, String title, String subtitle, Runnable goBack, String action, Runnable onAction) {
+        if (onboarding != null) onboarding.pageChanging();
         boolean tabChanged = goBack == null && navigationStrip != null && renderedTab != tab;
         float indicatorFrom = tabChanged ? navigationStrip.position() : -1;
         navigationStrip = null;
@@ -429,7 +464,9 @@ public final class MainActivity extends ComponentActivity {
         } else top.addView(heading, new LinearLayout.LayoutParams(0, -2, 1));
         if (action != null) {
             space(top, 8);
-            top.addView(pill(action, true, onAction));
+            TextView button = pill(action, true, onAction);
+            top.addView(button);
+            coachTarget("header-action", button);
         }
         header.addView(top);
         if (!subtitle.isEmpty() && goBack != null) {
@@ -498,6 +535,7 @@ public final class MainActivity extends ComponentActivity {
             root.addView(navigationStrip);
         }
         showPage(previousRoot, opening, returning);
+        if (onboarding != null) onboarding.pageShown();
         if (tabChanged) Motion.rise(body);
     }
 
