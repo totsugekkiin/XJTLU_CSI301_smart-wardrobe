@@ -74,8 +74,40 @@ final class SeasonWeather implements AutoCloseable {
         return new Advice(SeasonPolicy.monthSeason(today), null);
     }
 
-    boolean reminderDismissed() { return SeasonPolicy.quarter(LocalDate.now()).equals(prefs.getString("dismissed_quarter", "")); }
-    void dismissReminder() { prefs.edit().putString("dismissed_quarter", SeasonPolicy.quarter(LocalDate.now())).apply(); }
+    private static final String[] MODES = {"SPRING", "SUMMER", "AUTUMN", "WINTER"};
+
+    /** -1 means the weather/month recommendation drives the whole app. */
+    int manualSeason() {
+        String mode = prefs.getString("season_mode", "AUTO");
+        for (int i = 0; i < MODES.length; i++) if (MODES[i].equals(mode)) return i;
+        return -1;
+    }
+
+    void lockSeason(int season) {
+        prefs.edit().putString("season_mode", MODES[Math.max(0, Math.min(MODES.length - 1, season))]).apply();
+    }
+
+    void useAutoSeason() {
+        prefs.edit().putString("season_mode", "AUTO").apply();
+    }
+
+    int effectiveSeason(Advice advice) {
+        int manual = manualSeason();
+        return manual >= 0 ? manual : advice.season();
+    }
+
+    boolean reminderDismissed(int season) {
+        return prefs.getBoolean(reminderKey(season), false);
+    }
+
+    void dismissReminder(int season) {
+        prefs.edit().putBoolean(reminderKey(season), true).apply();
+    }
+
+    private String reminderKey(int season) {
+        int index = Math.max(0, Math.min(MODES.length - 1, season));
+        return "reminder_seen_" + LocalDate.now().getYear() + "_" + MODES[index];
+    }
 
     void refreshIfDue() {
         refresh(false);

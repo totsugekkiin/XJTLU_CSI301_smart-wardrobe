@@ -1,5 +1,8 @@
 package com.smartwardrobe.local;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ValueAnimator;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Point;
@@ -8,6 +11,7 @@ import android.text.InputFilter;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -21,6 +25,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.LinkedHashMap;
@@ -38,11 +43,112 @@ final class ClosetScreens {
     private int filterSeason = -1;
     private boolean favorites;
     private int currentSeason;
-    private boolean manualSeasonChoice;
     private boolean selecting;
     private final Set<Long> selected = new LinkedHashSet<>();
     private TextView countView;
     private SeasonTabs seasonTabs;
+    private SeasonCache seasonCache;
+    private boolean seasonLoading;
+    private final List<Runnable> seasonWaiters = new ArrayList<>();
+    private LinearLayout seasonContent;
+    private LinearLayout seasonStatusRow;
+    private LinearLayout seasonButtonsRow;
+    private final TextView[] seasonButtons = new TextView[4];
+    private TextView adjustAction;
+    private boolean adjustingSeasons;
+
+    private static final class SeasonCache {
+        final List<WardrobeStore.Garment> garments;
+        final Map<Long, WardrobeStore.Usage> usages;
+        final Map<Long, Long> inactive;
+
+        SeasonCache(List<WardrobeStore.Garment> garments, Map<Long, WardrobeStore.Usage> usages,
+                    Map<Long, Long> inactive) {
+            this.garments = garments;
+            this.usages = usages;
+            this.inactive = inactive;
+        }
+    }
+
+    private static final class ItemState {
+        final WardrobeStore.Garment garment;
+        final boolean dirty, stored;
+        final long inactive;
+        final WardrobeStore.Usage usage;
+
+        ItemState(WardrobeStore.Garment garment, boolean dirty, boolean stored, long inactive,
+                  WardrobeStore.Usage usage) {
+            this.garment = garment;
+            this.dirty = dirty;
+            this.stored = stored;
+            this.inactive = inactive;
+            this.usage = usage;
+        }
+    }
+
+    private static final WardrobeStore.Usage EMPTY_USAGE =
+            new WardrobeStore.Usage(0, null, 0, null, 0, null);
+
+    void prefetchSeasons() {
+        ensureSeasonCache(null);
+    }
+
+    private void ensureSeasonCache(Runnable after) {
+        if (after != null) seasonWaiters.add(after);
+        if (seasonCache != null) {
+            List<Runnable> ready = new ArrayList<>(seasonWaiters);
+            seasonWaiters.clear();
+            for (Runnable runnable : ready) runnable.run();
+            return;
+        }
+        if (seasonLoading) return;
+        seasonLoading = true;
+        ui.dbWorker.execute(() -> {
+            List<WardrobeStore.Garment> garments = db.garments();
+            Map<Long, WardrobeStore.Usage> usages = db.usages();
+            Map<Long, Long> inactive = new HashMap<>();
+            LocalDate today = LocalDate.now();
+            for (WardrobeStore.Garment garment : garments) {
+                WardrobeStore.Usage usage = usages.get(garment.id);
+                String latest = garment.created;
+                if (usage != null) {
+                    for (String day : new String[]{usage.lastWorn(), usage.washed(), usage.lastCare()}) {
+                        if (day != null && (latest == null || day.compareTo(latest) > 0)) latest = day;
+                    }
+                }
+                long days = 0;
+                if (latest != null && !latest.isEmpty()) {
+                    try {
+                        days = Math.max(0, ChronoUnit.DAYS.between(LocalDate.parse(latest), today));
+                    } catch (RuntimeException ignored) {
+                    }
+                }
+                inactive.put(garment.id, days);
+            }
+            SeasonCache loaded = new SeasonCache(garments, usages, inactive);
+            ui.runOnUiThread(() -> {
+                seasonCache = loaded;
+                seasonLoading = false;
+                List<Runnable> ready = new ArrayList<>(seasonWaiters);
+                seasonWaiters.clear();
+                for (Runnable runnable : ready) runnable.run();
+            });
+        });
+    }
+
+    private void invalidateSeasonCache() {
+        seasonCache = null;
+    }
+
+    private WardrobeStore.Usage usageOf(SeasonCache cache, WardrobeStore.Garment garment) {
+        WardrobeStore.Usage usage = cache.usages.get(garment.id);
+        return usage == null ? EMPTY_USAGE : usage;
+    }
+
+    private long inactiveOf(SeasonCache cache, WardrobeStore.Garment garment) {
+        Long days = cache.inactive.get(garment.id);
+        return days == null ? 0 : days;
+    }
 
     void clearSelection() { selecting = false; selected.clear(); }
 
@@ -75,10 +181,11 @@ final class ClosetScreens {
     ClosetScreens(MainActivity ui) {
         this.ui = ui;
         db = ui.db;
-        currentSeason = SeasonPolicy.monthSeason(LocalDate.now());
+        currentSeason = ui.weather.effectiveSeason(ui.weather.advice());
     }
 
     void home() {
+        invalidateSeasonCache();
         List<WardrobeStore.Garment> garments = db.garments();
         if (garments.isEmpty()) {
             countView = ui.closetPage("0 件单品", this::newGarment, filterBar());
@@ -237,11 +344,9 @@ final class ClosetScreens {
             LinearLayout actions = ui.row();
             actions.setGravity(Gravity.CENTER_VERTICAL);
             actions.setPadding(ui.dp(20), ui.dp(8), ui.dp(20), ui.dp(8));
-            actions.setBackground(ui.shape(PAPER, 0, STROKE));
-            TextView pending = ui.pill("标为待洗", true, () -> markSelectedDirty(new LinkedHashSet<>(selected)));
-            pending.setPadding(ui.dp(6), ui.dp(4), ui.dp(6), ui.dp(4));
-            pending.setSingleLine(true);
-            TextView archive = ui.pill("归档", false, () -> archiveSelected(new LinkedHashSet<>(selected)));
+            actions.setBackgroundColor(PAPER);
+            TextView pending = ui.ghost("标为待洗", () -> markSelectedDirty(new LinkedHashSet<>(selected)));
+            TextView archive = ui.ghost("归档", () -> archiveSelected(new LinkedHashSet<>(selected)));
             TextView delete = ui.destructiveButton("删除", () -> deleteSelected(new LinkedHashSet<>(selected)));
             pending.setEnabled(!selected.isEmpty());
             archive.setEnabled(!selected.isEmpty());
@@ -529,7 +634,10 @@ final class ClosetScreens {
     void detail(long id, Runnable back) {
         WardrobeStore.Garment garment = db.garment(id);
         if (garment == null) { back.run(); return; }
-        editor(garment, back);
+        editor(garment, () -> {
+            invalidateSeasonCache();
+            back.run();
+        });
     }
 
     private void confirmDelete(WardrobeStore.Garment garment, Runnable back) {
@@ -591,7 +699,15 @@ final class ClosetScreens {
     }
 
     void care() {
-        List<WardrobeStore.Garment> garments = db.garments();
+        if (seasonCache == null) {
+            ensureSeasonCache(this::care);
+            return;
+        }
+        renderCare(seasonCache);
+    }
+
+    private void renderCare(SeasonCache cache) {
+        List<WardrobeStore.Garment> garments = cache.garments;
         Map<String, List<WardrobeStore.Garment>> buckets = new LinkedHashMap<>();
         int pending = 0;
         for (var garment : garments) {
@@ -602,7 +718,7 @@ final class ClosetScreens {
             buckets.computeIfAbsent(symbol, k -> new ArrayList<>()).add(garment);
         }
         careHeader(pending);
-        seasonalReminder(garments);
+        seasonalReminder(cache);
         ui.ensureWeatherPermission(false);
         LinearLayout overview = ui.vertical();
         ui.body.addView(overview);
@@ -648,8 +764,8 @@ final class ClosetScreens {
         }
         int reminders = 0;
         for (WardrobeStore.Garment g : garments) {
-            WardrobeStore.Usage usage = db.usage(g.id);
-            String reminder = reminder(g, usage);
+            WardrobeStore.Usage usage = usageOf(cache, g);
+            String reminder = reminder(g, usage, inactiveOf(cache, g));
             if (reminder.isEmpty()) continue;
             if (reminders++ == 0) ui.section(ui.body, "护理提醒");
             reminderCard(ui.body, g, reminder, this::care);
@@ -695,9 +811,12 @@ final class ClosetScreens {
         careCard(ui.body).addView(ui.text(title, 17, INK, true));
     }
 
+    private void careEmpty(LinearLayout parent, String title) {
+        careCard(parent).addView(ui.text(title, 17, INK, true));
+    }
+
     private void openSeasonal() {
-        manualSeasonChoice = false;
-        currentSeason = ui.weather.advice().season();
+        currentSeason = ui.weather.effectiveSeason(ui.weather.advice());
         season();
     }
 
@@ -705,8 +824,8 @@ final class ClosetScreens {
         if (ui.guiding()) return;
         if (ui.isPage("wash-care")) care();
         else if (ui.isPage("seasonal-organize")) {
-            if (!manualSeasonChoice) currentSeason = ui.weather.advice().season();
-            season();
+            renderSeasonStatus();
+            renderSeasonContent();
         }
     }
 
@@ -738,35 +857,34 @@ final class ClosetScreens {
         return refresh;
     }
 
-    private void seasonalReminder(List<WardrobeStore.Garment> garments) {
-        if (ui.weather.reminderDismissed()) return;
+    private void seasonalReminder(SeasonCache cache) {
         SeasonWeather.Advice advice = ui.weather.advice();
-        int stored = 0, care = 0;
-        for (var garment : garments) {
-            if ((garment.seasons & (1 << advice.season())) == 0) continue;
-            if (garment.stored) stored++;
-            WardrobeStore.Usage usage = db.usage(garment.id);
-            if (garment.dirty || !reminder(garment, usage).isEmpty()
-                    || (garment.stored && idleDays(garment, usage) > 60)) care++;
+        int season = ui.weather.effectiveSeason(advice);
+        if (ui.weather.reminderDismissed(season)) return;
+        int wake = 0;
+        for (var garment : cache.garments) {
+            if ((garment.seasons & (1 << season)) == 0) continue;
+            if (garment.dirty) continue;
+            if (inactiveOf(cache, garment) > 60) wake++;
         }
-        if (stored == 0 && care == 0) return;
+        if (wake == 0) return;
         LinearLayout card = careCard(ui.body);
-        String temperature = advice.weatherBased() ? String.format(Locale.ROOT,"气温降至 %.0f°C  ",advice.averageHigh()) : "";
+        String temperature = advice.weatherBased() ? String.format(Locale.ROOT, "气温降至 %.0f°C  ", advice.averageHigh()) : "";
         LinearLayout heading = ui.row();
         heading.setGravity(Gravity.CENTER_VERTICAL);
-        TextView weatherHeading = ui.text(temperature + SEASONS[advice.season()] + "季衣橱待唤醒：", 14, INK, true);
+        TextView weatherHeading = ui.text(temperature + SEASONS[season] + "季衣橱待唤醒：", 14, INK, true);
         weatherHeading.setSingleLine(true);
         weatherHeading.setEllipsize(android.text.TextUtils.TruncateAt.END);
         heading.addView(weatherHeading, new LinearLayout.LayoutParams(0, -2, 1));
         heading.addView(weatherRefresh(), new LinearLayout.LayoutParams(ui.dp(48), ui.dp(48)));
         heading.addView(iconButton(NavIcon.CLOSE, false, "本季度关闭换季提醒", () -> {
-            ui.weather.dismissReminder();
+            ui.weather.dismissReminder(season);
             care();
         }), new LinearLayout.LayoutParams(ui.dp(40), ui.dp(40)));
         card.addView(heading);
         LinearLayout row = ui.row();
         row.setGravity(Gravity.CENTER_VERTICAL);
-        String message = stored + " 件已收起 / " + care + " 件需护理";
+        String message = wake + " 件久置待唤醒，建议整理";
         row.addView(ui.text(message, 14, INK, false), new LinearLayout.LayoutParams(0, -2, 1));
         ui.space(row, 10);
         row.addView(ui.pill("去整理", true, this::openSeasonal));
@@ -799,9 +917,14 @@ final class ClosetScreens {
     }
 
     private LinearLayout careRow(WardrobeStore.Garment g, String subtitle, String action, Runnable run, Runnable back) {
+        return careRow(ui.body, g, subtitle, action == null ? null : ui.pill(action, true, run), back);
+    }
+
+    private LinearLayout careRow(LinearLayout parent, WardrobeStore.Garment g, String subtitle, View action, Runnable back) {
         LinearLayout line = ui.row();
         line.setGravity(Gravity.CENTER_VERTICAL);
         line.setPadding(0, ui.dp(8), 0, ui.dp(8));
+        line.setTag(g.id);
         LinearLayout item = ui.row();
         item.setGravity(Gravity.CENTER_VERTICAL);
         ImageView thumb = ui.photo(g.photo, 4, 63);
@@ -818,10 +941,10 @@ final class ClosetScreens {
         line.addView(item, new LinearLayout.LayoutParams(0, -2, 1));
         if (action != null) {
             ui.space(line, 6);
-            line.addView(ui.pill(action, true, run));
+            line.addView(action);
         }
-        ui.body.addView(line);
-        careRule(ui.body);
+        parent.addView(line);
+        careRule(parent);
         return line;
     }
 
@@ -831,10 +954,12 @@ final class ClosetScreens {
 
     private void washToday(List<WardrobeStore.Garment> garments, Runnable refresh) {
         var changes = db.washToday(garments);
-        refresh.run();
+        invalidateSeasonCache();
+        ensureSeasonCache(refresh);
         ui.undoNotice("已记录今日洗涤", () -> {
             db.undoWash(changes);
-            refresh.run();
+            invalidateSeasonCache();
+            ensureSeasonCache(refresh);
             ui.bottomNotice("已撤销洗涤记录");
         });
     }
@@ -871,6 +996,10 @@ final class ClosetScreens {
     }
 
     String reminder(WardrobeStore.Garment g, WardrobeStore.Usage stats) {
+        return reminder(g, stats, idleDays(g, stats));
+    }
+
+    String reminder(WardrobeStore.Garment g, WardrobeStore.Usage stats, long days) {
         List<String> lines = new ArrayList<>();
         if (g.washEvery > 0 && stats.sinceCare() >= g.washEvery) {
             String fabric = g.fabric.toLowerCase(Locale.ROOT);
@@ -879,7 +1008,6 @@ final class ClosetScreens {
             lines.add("已洗涤 " + stats.sinceCare() + " 次 / 检查" + checks + "。");
             if (!g.care.isEmpty() || !g.symbols.isEmpty()) lines.add("请按洗标护理");
         }
-        long days = idleDays(g, stats);
         if (g.idleDays > 0 && days >= g.idleDays) lines.add("已 " + days + " 天未使用 / 检查通风与除尘");
         return String.join("\n", lines);
     }
@@ -890,15 +1018,6 @@ final class ClosetScreens {
             if (day != null && (from == null || day.compareTo(from) > 0)) from = day;
         }
         return ChronoUnit.DAYS.between(LocalDate.parse(from == null ? g.created : from), LocalDate.now());
-    }
-
-    private String storedCareReason(WardrobeStore.Garment g, WardrobeStore.Usage usage) {
-        List<String> reasons = new ArrayList<>();
-        if (g.dirty) reasons.add("收起前未洗");
-        long days = idleDays(g, usage);
-        if (days > 60) reasons.add("久置 " + days + " 天");
-        if (!reminder(g, usage).isEmpty()) reasons.add("需护理");
-        return String.join(" / ", reasons);
     }
 
     private void reminderCard(LinearLayout parent, WardrobeStore.Garment g, String note, Runnable refresh) {
@@ -916,151 +1035,373 @@ final class ClosetScreens {
             String value = ui.value(input);
             db.checked(g.id, value.isEmpty() ? "完成护理检查" : value);
             sheet.dismiss();
-            refresh.run();
+            invalidateSeasonCache();
+            ensureSeasonCache(refresh);
             ui.toast("已完成护理");
         });
         sheet.show();
     }
 
     void season() {
-        List<WardrobeStore.Garment> garments = db.garments();
-        ui.page("seasonal-organize", "换季整理", "", this::care, null, null);
-        SeasonWeather.Advice advice = ui.weather.advice();
-        String basis = advice.weatherBased()
-                ? String.format(Locale.ROOT,"未来3天平均最高温 %.0f°C  建议%s季",advice.averageHigh(),SEASONS[advice.season()])
-                : "按当前月份推荐" + SEASONS[advice.season()] + "季";
-        LinearLayout weatherLine = ui.row();
-        weatherLine.setGravity(Gravity.CENTER_VERTICAL);
-        TextView weatherText = ui.text(basis, 13, INK, false);
-        weatherText.setSingleLine(true);
-        weatherText.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        weatherLine.addView(weatherText, new LinearLayout.LayoutParams(0, -2, 1));
-        weatherLine.addView(weatherRefresh(), new LinearLayout.LayoutParams(ui.dp(48), ui.dp(48)));
-        ui.body.addView(weatherLine);
+        ui.page("seasonal-organize", "换季整理", "", this::care,
+                adjustingSeasons ? "完成" : "调整季节", this::toggleAdjustMode);
+        adjustAction = ui.plainHeaderAction(adjustingSeasons);
+        seasonStatusRow = ui.row();
+        seasonStatusRow.setGravity(Gravity.CENTER_VERTICAL);
+        ui.body.addView(seasonStatusRow);
         ui.gap(ui.body, 14);
-        LinearLayout seasons = ui.row();
+        seasonButtonsRow = ui.row();
+        ui.body.addView(seasonButtonsRow);
+        renderSeasonButtons();
+        ui.gap(ui.body, 20);
+        seasonContent = ui.vertical();
+        ui.body.addView(seasonContent);
+        ui.weather.dismissReminder(currentSeason);
+        renderSeasonStatus();
+        if (seasonCache == null) {
+            seasonContent.addView(ui.text("正在整理衣橱…", 14, MUTED, false));
+            ensureSeasonCache(() -> {
+                if (ui.isPage("seasonal-organize")) renderSeasonContent();
+            });
+        } else {
+            renderSeasonContent();
+        }
+    }
+
+    private void selectSeason(int index) {
+        currentSeason = index;
+        ui.weather.dismissReminder(index);
+        renderSeasonButtons();
+        renderSeasonStatus();
+        renderSeasonContent();
+    }
+
+    private void renderSeasonButtons() {
+        if (seasonButtonsRow == null) return;
+        seasonButtonsRow.removeAllViews();
         for (int i = 0; i < SEASONS.length; i++) {
-            int index = i;
-            Runnable selectSeason = () -> {
-                currentSeason = index;
-                manualSeasonChoice = true;
-                season();
-            };
-            TextView button = i == currentSeason ? ui.pill(SEASONS[i] + "季", true, selectSeason)
-                    : careOutlineButton(SEASONS[i] + "季", selectSeason);
+            final int index = i;
+            TextView button = i == currentSeason ? ui.pill(SEASONS[i] + "季", true, () -> selectSeason(index))
+                    : careOutlineButton(SEASONS[i] + "季", () -> selectSeason(index));
             button.setSelected(i == currentSeason);
             LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, -2, 1);
             if (i != 0) p.leftMargin = ui.dp(7);
-            seasons.addView(button, p);
+            seasonButtons[i] = button;
+            seasonButtonsRow.addView(button, p);
         }
-        ui.body.addView(seasons);
-        ui.gap(ui.body, 20);
-        Map<WearStatus, List<WardrobeStore.Garment>> groups = new java.util.EnumMap<>(WearStatus.class);
-        List<WardrobeStore.Garment> storedReady = new ArrayList<>();
-        List<WardrobeStore.Garment> storedCare = new ArrayList<>();
+    }
+
+    private void renderSeasonStatus() {
+        if (seasonStatusRow == null) return;
+        seasonStatusRow.removeAllViews();
+        SeasonWeather.Advice advice = ui.weather.advice();
+        int manual = ui.weather.manualSeason();
+        int effective = ui.weather.effectiveSeason(advice);
+        String label;
+        if (manual >= 0) {
+            label = "当前手动季节：" + SEASONS[manual] + "季";
+        } else {
+            label = advice.weatherBased()
+                    ? String.format(Locale.ROOT, "未来3天平均最高温 %.0f°C  建议%s季", advice.averageHigh(), SEASONS[advice.season()])
+                    : "按当前月份推荐" + SEASONS[advice.season()] + "季";
+        }
+        TextView status = ui.text(label, 13, INK, false);
+        status.setSingleLine(true);
+        status.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        seasonStatusRow.addView(status, new LinearLayout.LayoutParams(0, -2, 1));
+        if (currentSeason != effective) {
+            ui.space(seasonStatusRow, 6);
+            TextView lock = ui.text("设为当前季节", 13, INK, true);
+            lock.setPadding(ui.dp(2), 0, ui.dp(2), 0);
+            lock.setMinHeight(ui.dp(48));
+            lock.setGravity(Gravity.CENTER_VERTICAL);
+            lock.setContentDescription("将" + SEASONS[currentSeason] + "季设为当前季节");
+            lock.setOnClickListener(view -> {
+                ui.weather.lockSeason(currentSeason);
+                ui.weather.dismissReminder(currentSeason);
+                renderSeasonStatus();
+            });
+            Motion.press(lock);
+            seasonStatusRow.addView(lock);
+        }
+        if (manual >= 0) {
+            ui.space(seasonStatusRow, 8);
+            TextView auto = ui.text("恢复自动", 13, 0xff888888, false);
+            auto.setPadding(ui.dp(2), 0, ui.dp(2), 0);
+            auto.setMinHeight(ui.dp(48));
+            auto.setGravity(Gravity.CENTER_VERTICAL);
+            auto.setContentDescription("恢复自动季节");
+            auto.setOnClickListener(view -> {
+                ui.weather.useAutoSeason();
+                currentSeason = ui.weather.effectiveSeason(ui.weather.advice());
+                renderSeasonButtons();
+                renderSeasonStatus();
+                renderSeasonContent();
+            });
+            Motion.press(auto);
+            seasonStatusRow.addView(auto);
+        }
+        ui.space(seasonStatusRow, 2);
+        seasonStatusRow.addView(weatherRefresh(), new LinearLayout.LayoutParams(ui.dp(48), ui.dp(48)));
+    }
+
+    private void toggleAdjustMode() {
+        adjustingSeasons = !adjustingSeasons;
+        if (adjustAction != null) {
+            adjustAction.setText(adjustingSeasons ? "完成" : "调整季节");
+            adjustAction.setTypeface(android.graphics.Typeface.create("sans-serif",
+                    adjustingSeasons ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL));
+        }
+        renderSeasonContent();
+    }
+
+    private void renderSeasonContent() {
+        if (seasonContent == null) return;
+        seasonContent.removeAllViews();
+        SeasonCache cache = seasonCache;
+        if (cache == null) {
+            seasonContent.addView(ui.text("正在整理衣橱…", 14, MUTED, false));
+            return;
+        }
         List<WardrobeStore.Garment> untagged = new ArrayList<>();
+        List<WardrobeStore.Garment> dirty = new ArrayList<>();
+        List<WardrobeStore.Garment> wake = new ArrayList<>();
+        List<WardrobeStore.Garment> care = new ArrayList<>();
+        List<WardrobeStore.Garment> ready = new ArrayList<>();
         int total = 0;
-        for (WardrobeStore.Garment g : garments) {
-            if (g.seasons == 0) {
-                untagged.add(g);
-                continue;
-            }
+        for (WardrobeStore.Garment g : cache.garments) {
+            if (g.seasons == 0) { untagged.add(g); continue; }
             if ((g.seasons & (1 << currentSeason)) == 0) continue;
             total++;
-            WardrobeStore.Usage usage = db.usage(g.id);
-            if (g.stored) {
-                if (g.dirty || !reminder(g, usage).isEmpty() || idleDays(g, usage) > 60) storedCare.add(g);
-                else storedReady.add(g);
-            } else {
-                groups.computeIfAbsent(wearStatus(g, usage), status -> new ArrayList<>()).add(g);
+            long inactive = inactiveOf(cache, g);
+            if (g.dirty) { dirty.add(g); continue; }
+            if (inactive > 60) { wake.add(g); continue; }
+            if (!reminder(g, usageOf(cache, g), inactive).isEmpty()) care.add(g);
+            else ready.add(g);
+        }
+        seasonSummary(seasonContent, SEASONS[currentSeason] + "季", total, ready.size(), dirty, wake);
+        if (total == 0) careEmpty(seasonContent, SEASONS[currentSeason] + "季暂无适用衣物");
+        if (!dirty.isEmpty()) {
+            ui.section(seasonContent, "待洗  " + dirty.size());
+            for (WardrobeStore.Garment g : dirty) {
+                LinearLayout wrap = newSeasonRow(g);
+                careRow(wrap, g, g.type,
+                        adjustingSeasons ? seasonTags(g) : ui.pill("已洗", true, () -> washSeasonItem(g, wrap)),
+                        this::season);
+                seasonContent.addView(wrap);
             }
         }
-        int pending = (int) garments.stream().filter(g -> g.dirty && (g.seasons & (1 << currentSeason)) != 0).count();
-        String season = SEASONS[currentSeason] + "季";
-        seasonSummary(season, total, groups.getOrDefault(WearStatus.READY, Collections.emptyList()).size(), pending,
-                storedReady.size() + storedCare.size());
-        if (total == 0) careEmpty(season + "暂无适用衣物");
-        storedSection("可直接穿", storedReady, false);
-        storedSection("需洗护后再穿", storedCare, true);
-        for (WearStatus status : new WearStatus[]{WearStatus.DIRTY, WearStatus.CARE, WearStatus.READY}) {
-            List<WardrobeStore.Garment> group = groups.getOrDefault(status, Collections.emptyList());
-            if (group.isEmpty()) continue;
-            String title = switch (status) {
-                case READY -> "洁净就绪";
-                default -> status.label;
-            };
-            ui.section(ui.body, title + "  " + group.size());
-            for (WardrobeStore.Garment g : group) {
-                switch (status) {
-                    case DIRTY -> careRow(g, g.type, "已洗", () -> recordWash(g, this::season), this::season);
-                    case CARE -> careRow(g, g.type, "完成护理检查", () -> completeCare(g, this::season), this::season);
-                    default -> careRow(g, g.type, null, null, this::season);
-                }
+        if (!wake.isEmpty()) {
+            ui.section(seasonContent, "待唤醒  " + wake.size());
+            for (WardrobeStore.Garment g : wake) {
+                LinearLayout wrap = newSeasonRow(g);
+                careRow(wrap, g, "久置 " + inactiveOf(cache, g) + " 天",
+                        adjustingSeasons ? seasonTags(g) : wakeActions(g, wrap), this::season);
+                seasonContent.addView(wrap);
+            }
+        }
+        if (!care.isEmpty()) {
+            ui.section(seasonContent, "需护理  " + care.size());
+            for (WardrobeStore.Garment g : care) {
+                LinearLayout wrap = newSeasonRow(g);
+                careRow(wrap, g, g.type,
+                        adjustingSeasons ? seasonTags(g) : ui.pill("完成护理检查", true, () -> completeCare(g, this::season)),
+                        this::season);
+                seasonContent.addView(wrap);
+            }
+        }
+        if (!ready.isEmpty()) {
+            ui.section(seasonContent, "洁净就绪  " + ready.size());
+            for (WardrobeStore.Garment g : ready) {
+                LinearLayout wrap = newSeasonRow(g);
+                careRow(wrap, g, g.type, adjustingSeasons ? seasonTags(g) : null, this::season);
+                seasonContent.addView(wrap);
             }
         }
         if (!untagged.isEmpty()) {
-            ui.section(ui.body, "季节未标注");
-            for (var garment : untagged) {
-                careRow(garment, garment.type, "设置季节",
-                        () -> chooseSeasons(garment.seasons, bits -> {
-                            db.setSeasons(garment.id, bits);
-                            season();
-                        }), this::season);
+            ui.section(seasonContent, "季节未标注");
+            for (WardrobeStore.Garment g : untagged) {
+                LinearLayout wrap = newSeasonRow(g);
+                careRow(wrap, g, g.type, adjustingSeasons ? seasonTags(g) : ui.pill("设置季节", true,
+                        () -> chooseSeasons(g.seasons, bits -> {
+                            g.seasons = bits;
+                            ui.dbWorker.execute(() -> db.setSeasons(g.id, bits));
+                            renderSeasonContent();
+                        })), this::season);
+                seasonContent.addView(wrap);
             }
         }
     }
 
-    private void storedSection(String title, List<WardrobeStore.Garment> garments, boolean needsWash) {
-        if (garments.isEmpty()) return;
-        ui.section(ui.body, "已收起 / " + title + "  " + garments.size());
-        ui.body.addView(ui.pill(needsWash ? "一键取出并送入待洗" : "一键全部取出", true, () -> {
-            db.takeOut(garments, needsWash);
-            season();
-            ui.bottomNotice(needsWash ? "已取出并加入待洗" : "已全部取出");
-        }));
-        for (var g : garments) {
-            LinearLayout line = careRow(g, needsWash ? storedCareReason(g, db.usage(g.id)) : "已收起 / 洁净",
-                    null, null, this::season);
-            if (needsWash) {
-                LinearLayout actions = ui.row();
-                TextView send = seasonalItemAction("送洗", g.name, () -> {
-                    db.takeOut(Collections.singletonList(g), true);
-                    finishSeasonalAction(line, actions, "已取出并加入待洗");
-                });
-                TextView wear = seasonalItemAction("直接穿", g.name, () -> {
-                    db.takeOutReady(g.id);
-                    finishSeasonalAction(line, actions, "已取出并完成换季检查");
-                });
-                actions.addView(send);
-                ui.space(actions, 8);
-                actions.addView(wear);
-                ui.space(line, 8);
-                line.addView(actions);
-            }
+    private LinearLayout newSeasonRow(WardrobeStore.Garment garment) {
+        LinearLayout wrap = ui.vertical();
+        wrap.setTag(garment.id);
+        return wrap;
+    }
+
+    private LinearLayout wakeActions(WardrobeStore.Garment garment, LinearLayout wrap) {
+        LinearLayout actions = ui.row();
+        actions.setGravity(Gravity.CENTER_VERTICAL);
+        TextView wash = ui.text("送洗", 12, INK, false);
+        wash.setPadding(ui.dp(4), ui.dp(8), ui.dp(8), ui.dp(8));
+        wash.setContentDescription(garment.name + " 送洗");
+        wash.setOnClickListener(view -> sendToWash(garment, wrap));
+        actions.addView(wash);
+        ui.space(actions, 8);
+        TextView wear = ui.pill("直接穿", true, () -> wearNow(garment, wrap));
+        wear.setTextSize(12);
+        wear.setPadding(ui.dp(10), ui.dp(3), ui.dp(10), ui.dp(3));
+        wear.setMinHeight(ui.dp(40));
+        wear.setMinimumHeight(ui.dp(40));
+        wear.setContentDescription(garment.name + " 直接穿");
+        actions.addView(wear);
+        return actions;
+    }
+
+    private LinearLayout seasonTags(WardrobeStore.Garment garment) {
+        LinearLayout row = ui.row();
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        for (int i = 0; i < SEASONS.length; i++) {
+            if (i != 0) ui.space(row, 10);
+            row.addView(seasonTag(garment, i));
         }
-        ui.gap(ui.body, 16);
+        return row;
     }
 
-    private TextView seasonalItemAction(String label, String name, Runnable action) {
-        TextView button = careOutlineButton(label, action);
-        button.setTextSize(12);
-        button.setPadding(ui.dp(8), 0, ui.dp(8), 0);
-        button.setMinWidth(ui.dp(48));
-        button.setMinimumWidth(ui.dp(48));
-        button.setContentDescription(name + " " + label);
-        return button;
+    private TextView seasonTag(WardrobeStore.Garment garment, int index) {
+        boolean active = (garment.seasons & (1 << index)) != 0;
+        TextView tag = ui.text(SEASONS[index], 13, active ? INK : 0xffcccccc, active);
+        tag.setPadding(ui.dp(2), ui.dp(8), ui.dp(2), ui.dp(8));
+        tag.setContentDescription(SEASONS[index] + "季" + (active ? "，已选中" : "，未选中"));
+        tag.setOnClickListener(view -> {
+            garment.seasons ^= 1 << index;
+            boolean on = (garment.seasons & (1 << index)) != 0;
+            tag.setTextColor(on ? INK : 0xffcccccc);
+            tag.setTypeface(android.graphics.Typeface.create("sans-serif",
+                    on ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL));
+            tag.setContentDescription(SEASONS[index] + "季" + (on ? "，已选中" : "，未选中"));
+            int bits = garment.seasons;
+            ui.dbWorker.execute(() -> db.setSeasons(garment.id, bits));
+        });
+        return tag;
     }
 
-    private void finishSeasonalAction(LinearLayout line, LinearLayout actions, String message) {
-        for (int i = 0; i < actions.getChildCount(); i++) actions.getChildAt(i).setEnabled(false);
-        line.getChildAt(0).setEnabled(false);
-        Runnable finish = () -> {
-            if (!ui.isCurrentView(line)) return;
-            season();
-            ui.bottomNotice(message);
-        };
-        if (Motion.enabled()) line.animate().alpha(0).translationX(-ui.dp(8)).setDuration(160).withEndAction(finish).start();
-        else finish.run();
+    private ItemState snapshot(WardrobeStore.Garment garment) {
+        return new ItemState(garment, garment.dirty, garment.stored,
+                inactiveOf(seasonCache, garment), usageOf(seasonCache, garment));
+    }
+
+    private void restore(ItemState state) {
+        state.garment.dirty = state.dirty;
+        state.garment.stored = state.stored;
+        seasonCache.inactive.put(state.garment.id, state.inactive);
+        seasonCache.usages.put(state.garment.id, state.usage);
+    }
+
+    private void washSeasonItem(WardrobeStore.Garment garment, LinearLayout wrap) {
+        if (!wrap.isEnabled() || seasonCache == null) return;
+        wrap.setEnabled(false);
+        ItemState before = snapshot(garment);
+        WardrobeStore.Usage usage = usageOf(seasonCache, garment);
+        String today = LocalDate.now().toString();
+        garment.dirty = false;
+        seasonCache.inactive.put(garment.id, 0L);
+        seasonCache.usages.put(garment.id, new WardrobeStore.Usage(usage.washes() + 1, today,
+                usage.worn(), usage.lastWorn(), usage.sinceCare() + 1, usage.lastCare()));
+        final List<WardrobeStore.WashChange>[] changes = new List[]{null};
+        ui.dbWorker.execute(() -> changes[0] = db.washToday(Collections.singletonList(garment)));
+        animateRemoval(wrap, this::renderSeasonContent);
+        ui.undoNotice("已记录今日洗涤", () -> {
+            restore(before);
+            renderSeasonContent();
+            ui.dbWorker.execute(() -> {
+                if (changes[0] != null) db.undoWash(changes[0]);
+            });
+        });
+    }
+
+    private void sendToWash(WardrobeStore.Garment garment, LinearLayout wrap) {
+        checkSeasonItem(garment, wrap, true, "已加入待洗");
+    }
+
+    private void wearNow(WardrobeStore.Garment garment, LinearLayout wrap) {
+        checkSeasonItem(garment, wrap, false, "已记录换季检查");
+    }
+
+    private void checkSeasonItem(WardrobeStore.Garment garment, LinearLayout wrap, boolean dirty, String message) {
+        if (!wrap.isEnabled() || seasonCache == null) return;
+        wrap.setEnabled(false);
+        ItemState before = snapshot(garment);
+        WardrobeStore.Usage usage = usageOf(seasonCache, garment);
+        String today = LocalDate.now().toString();
+        garment.dirty = dirty;
+        garment.stored = false;
+        seasonCache.inactive.put(garment.id, 0L);
+        seasonCache.usages.put(garment.id, new WardrobeStore.Usage(usage.washes(), usage.washed(),
+                usage.worn(), usage.lastWorn(), 0, today));
+        final long[] record = {-1};
+        ui.dbWorker.execute(() -> record[0] = db.checkAndState(garment.id, dirty, true, "换季检查完成"));
+        animateRemoval(wrap, this::renderSeasonContent);
+        ui.undoNotice(message, () -> {
+            restore(before);
+            renderSeasonContent();
+            ui.dbWorker.execute(() -> {
+                if (record[0] > 0) db.undoChecked(Collections.singletonList(record[0]));
+                db.state(garment.id, "dirty", before.dirty);
+                db.state(garment.id, "stored", before.stored);
+            });
+        });
+    }
+
+    private void wakeAll(List<WardrobeStore.Garment> garments) {
+        if (seasonCache == null || garments.isEmpty()) return;
+        List<ItemState> before = new ArrayList<>();
+        String today = LocalDate.now().toString();
+        for (WardrobeStore.Garment garment : garments) {
+            before.add(snapshot(garment));
+            WardrobeStore.Usage usage = usageOf(seasonCache, garment);
+            garment.dirty = false;
+            garment.stored = false;
+            seasonCache.inactive.put(garment.id, 0L);
+            seasonCache.usages.put(garment.id, new WardrobeStore.Usage(usage.washes(), usage.washed(),
+                    usage.worn(), usage.lastWorn(), 0, today));
+        }
+        final List<Long>[] records = new List[]{null};
+        ui.dbWorker.execute(() -> records[0] = db.checkedAll(garments, "换季检查完成"));
+        renderSeasonContent();
+        ui.undoNotice("已唤醒 " + garments.size() + " 件", () -> {
+            for (ItemState state : before) restore(state);
+            renderSeasonContent();
+            ui.dbWorker.execute(() -> {
+                if (records[0] != null) db.undoChecked(records[0]);
+                for (ItemState state : before) db.state(state.garment.id, "stored", state.stored);
+            });
+        });
+    }
+
+    private void animateRemoval(View row, Runnable after) {
+        if (!Motion.enabled() || row.getHeight() == 0) {
+            after.run();
+            return;
+        }
+        int height = row.getHeight();
+        ValueAnimator animator = ValueAnimator.ofFloat(1f, 0f);
+        animator.setDuration(200);
+        animator.setInterpolator(new android.view.animation.DecelerateInterpolator());
+        animator.addUpdateListener(value -> {
+            float fraction = (float) value.getAnimatedValue();
+            ViewGroup.LayoutParams params = row.getLayoutParams();
+            params.height = Math.max(0, Math.round(height * fraction));
+            row.setLayoutParams(params);
+            row.setAlpha(fraction);
+        });
+        animator.addListener(new AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(Animator animation) {
+                row.setVisibility(View.GONE);
+                after.run();
+            }
+        });
+        animator.start();
     }
 
     private Sheet chooseSeasons(int initial, java.util.function.IntConsumer chosen) {
@@ -1088,14 +1429,16 @@ final class ClosetScreens {
         return sheet;
     }
 
-    private void seasonSummary(String season, int total, int ready, int pending, int stored) {
-        LinearLayout status = careCard(ui.body);
+    private void seasonSummary(LinearLayout parent, String season, int total, int ready,
+                               List<WardrobeStore.Garment> dirty, List<WardrobeStore.Garment> wake) {
+        int pending = dirty.size(), waking = wake.size();
+        LinearLayout status = careCard(parent);
         status.addView(ui.text(season + "衣橱 / " + total + " 件", 12, MUTED, false));
         int percent = total == 0 ? 0 : Math.round(100f * ready / total);
         status.addView(ui.text("可直接穿 " + ready + " / " + total + " 件 / " + percent + "%", 15, INK, true));
         if (total == 0) return;
         ui.gap(status, 10);
-        // Dirty and stored are independent counts; only readiness partitions the bar.
+        // Readiness partitions the bar; dirty and waking are independent counts below it.
         int[] amounts = {ready, total - ready};
         int[] shades = {INK, PAPER};
         LinearLayout bar = ui.row();
@@ -1113,8 +1456,8 @@ final class ClosetScreens {
         status.addView(bar, new LinearLayout.LayoutParams(-1, ui.dp(8)));
         ui.gap(status, 10);
         LinearLayout counts = ui.row();
-        String[] names = {"可直接穿", "待洗", "已收起"};
-        int[] totals = {ready, pending, stored};
+        String[] names = {"可直接穿", "待洗", "待唤醒"};
+        int[] totals = {ready, pending, waking};
         for (int i = 0; i < names.length; i++) {
             TextView count = ui.text(names[i] + "\n" + totals[i] + " 件", 12, INK, true);
             android.graphics.drawable.GradientDrawable outlineCount = ui.shape(PAPER, 0, 0);
@@ -1126,9 +1469,13 @@ final class ClosetScreens {
             counts.addView(count, p);
         }
         status.addView(counts);
-        if (pending > 0) {
-            ui.gap(status, 10);
-            status.addView(ui.pill("查看待洗", true, this::care));
+        ui.gap(status, 10);
+        if (waking > 0) {
+            status.addView(ui.pill("一键唤醒", true, () -> wakeAll(wake)),
+                    new LinearLayout.LayoutParams(-1, -2));
+        } else if (pending > 0) {
+            status.addView(ui.pill("查看待洗", true, this::care),
+                    new LinearLayout.LayoutParams(-1, -2));
         }
     }
 
@@ -2246,6 +2593,7 @@ final class ClosetScreens {
                 render();
                 baseline = fingerprint();
                 updateSave();
+                invalidateSeasonCache();
                 ui.toast(isNew ? "已添加衣物" : "已保存");
             });
         }

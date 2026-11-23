@@ -16,7 +16,9 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.LinkedHashSet;
 import java.util.UUID;
@@ -469,6 +471,48 @@ final class WardrobeStore extends SQLiteOpenHelper {
         }
     }
 
+    /** One pass over the history tables; avoids a query per garment while a list is bound. */
+    Map<Long, Usage> usages() {
+        Map<Long, Integer> washes = new HashMap<>(), worn = new HashMap<>();
+        Map<Long, String> washed = new HashMap<>(), lastWorn = new HashMap<>();
+        Map<Long, Integer> checkpoints = new HashMap<>();
+        Map<Long, String> lastCare = new HashMap<>();
+        SQLiteDatabase db = getReadableDatabase();
+        try (Cursor c = db.rawQuery("SELECT garment, COUNT(*), MAX(day) FROM wash GROUP BY garment", null)) {
+            while (c.moveToNext()) {
+                long id = c.getLong(0);
+                washes.put(id, c.getInt(1));
+                washed.put(id, c.getString(2));
+            }
+        }
+        try (Cursor c = db.rawQuery("SELECT hg.garment, COUNT(*), MAX(h.day) FROM history_garment hg"
+                + " JOIN history h ON h.id=hg.history GROUP BY hg.garment", null)) {
+            while (c.moveToNext()) {
+                long id = c.getLong(0);
+                worn.put(id, c.getInt(1));
+                lastWorn.put(id, c.getString(2));
+            }
+        }
+        try (Cursor c = db.rawQuery("SELECT garment, wash_checkpoint, day FROM care_event ORDER BY id DESC", null)) {
+            while (c.moveToNext()) {
+                long id = c.getLong(0);
+                if (!checkpoints.containsKey(id)) {
+                    checkpoints.put(id, c.getInt(1));
+                    lastCare.put(id, c.getString(2));
+                }
+            }
+        }
+        Map<Long, Usage> result = new HashMap<>();
+        for (Garment garment : garments()) {
+            int count = washes.getOrDefault(garment.id, 0);
+            int checkpoint = checkpoints.getOrDefault(garment.id, 0);
+            result.put(garment.id, new Usage(count, washed.get(garment.id),
+                    worn.getOrDefault(garment.id, 0), lastWorn.get(garment.id),
+                    count - checkpoint, lastCare.get(garment.id)));
+        }
+        return result;
+    }
+
     record WashChange(long record, long garment, boolean wasDirty) {}
 
     List<WashChange> washToday(List<Garment> garments) {
@@ -527,18 +571,65 @@ final class WardrobeStore extends SQLiteOpenHelper {
         return list;
     }
 
-    void checked(long id, String note) {
+    long checked(long id, String note) {
         SQLiteDatabase db = getWritableDatabase();
         db.beginTransaction();
         try {
-            ContentValues v = new ContentValues();
-            v.put("garment", id);
-            v.put("day", LocalDate.now().toString());
-            v.put("note", note);
-            v.put("wash_checkpoint", DatabaseUtils.longForQuery(db, "SELECT COUNT(*) FROM wash WHERE garment=?", arg(id)));
-            db.insertOrThrow("care_event", null, v);
+            long record = insertCheck(db, id, LocalDate.now().toString(), note);
+            db.setTransactionSuccessful();
+            return record;
+        } finally { db.endTransaction(); }
+    }
+
+    /** Records one check for every garment in a single transaction, returning the row ids for undo. */
+    List<Long> checkedAll(List<Garment> garments, String note) {
+        List<Long> records = new ArrayList<>();
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try {
+            String day = LocalDate.now().toString();
+            ContentValues clearStored = new ContentValues();
+            clearStored.put("stored", false);
+            for (Garment garment : garments) {
+                db.update("garment", clearStored, "id=?", arg(garment.id));
+                records.add(insertCheck(db, garment.id, day, note));
+            }
             db.setTransactionSuccessful();
         } finally { db.endTransaction(); }
+        return records;
+    }
+
+    /** Check plus a dirty/stored state change in one transaction, used by seasonal actions. */
+    long checkAndState(long id, boolean dirty, boolean clearStored, String note) {
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try {
+            ContentValues values = new ContentValues();
+            values.put("dirty", dirty);
+            if (clearStored) values.put("stored", false);
+            db.update("garment", values, "id=?", arg(id));
+            long record = insertCheck(db, id, LocalDate.now().toString(), note);
+            db.setTransactionSuccessful();
+            return record;
+        } finally { db.endTransaction(); }
+    }
+
+    void undoChecked(List<Long> records) {
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try {
+            for (long record : records) db.delete("care_event", "id=?", arg(record));
+            db.setTransactionSuccessful();
+        } finally { db.endTransaction(); }
+    }
+
+    private long insertCheck(SQLiteDatabase db, long id, String day, String note) {
+        ContentValues v = new ContentValues();
+        v.put("garment", id);
+        v.put("day", day);
+        v.put("note", note);
+        v.put("wash_checkpoint", DatabaseUtils.longForQuery(db, "SELECT COUNT(*) FROM wash WHERE garment=?", arg(id)));
+        return db.insertOrThrow("care_event", null, v);
     }
 
     List<CareEvent> checks(long id) {

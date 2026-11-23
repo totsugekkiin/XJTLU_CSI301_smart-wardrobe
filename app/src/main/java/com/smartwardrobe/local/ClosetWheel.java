@@ -22,6 +22,8 @@ final class ClosetWheel extends View {
     private final int[] spectrum = new int[13];
     private float centerX, centerY, radius;
     private int active = -1;
+    private float downX, downY;
+    private boolean verticalDrag;
 
     ClosetWheel(MainActivity ui, List<Integer> colors, IntConsumer picked) {
         super(ui);
@@ -120,24 +122,37 @@ final class ClosetWheel extends View {
 
     @Override public boolean onTouchEvent(MotionEvent event) {
         int action = event.getActionMasked();
-        if (action == MotionEvent.ACTION_DOWN) getParent().requestDisallowInterceptTouchEvent(true);
-        if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) getParent().requestDisallowInterceptTouchEvent(false);
-        if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_MOVE || action == MotionEvent.ACTION_UP) {
-            int nearest = -1;
-            double distance = Double.MAX_VALUE;
-            for (int i = 0; i < points.size(); i++) {
-                PointF p = points.get(i);
-                double d = Math.hypot(p.x - event.getX(), p.y - event.getY());
-                if (d < distance) { distance = d; nearest = i; }
-            }
-            if (nearest >= 0 && nearest != active && distance <= radius * .55f) {
-                active = nearest;
-                picked.accept(colors.get(nearest));
-                invalidate();
-            }
-            if (action == MotionEvent.ACTION_UP) performClick();
+        if (action == MotionEvent.ACTION_DOWN) {
+            downX = event.getX();
+            downY = event.getY();
+            verticalDrag = false;
+        } else if (action == MotionEvent.ACTION_MOVE) {
+            float dx = Math.abs(event.getX() - downX), dy = Math.abs(event.getY() - downY);
+            int slop = android.view.ViewConfiguration.get(getContext()).getScaledTouchSlop();
+            if (dy > slop && dy > dx * 1.15f) verticalDrag = true;
+            // Vertical gestures belong to the enclosing ScrollView; only taps and sideways drags pick a color.
+            if (verticalDrag) return true;
+            pick(event.getX(), event.getY());
+        } else if (action == MotionEvent.ACTION_UP) {
+            if (!verticalDrag) pick(event.getX(), event.getY());
+            performClick();
         }
         return true;
+    }
+
+    private void pick(float x, float y) {
+        int nearest = -1;
+        double distance = Double.MAX_VALUE;
+        for (int i = 0; i < points.size(); i++) {
+            PointF p = points.get(i);
+            double d = Math.hypot(p.x - x, p.y - y);
+            if (d < distance) { distance = d; nearest = i; }
+        }
+        if (nearest >= 0 && nearest != active && distance <= radius * .55f) {
+            active = nearest;
+            picked.accept(colors.get(nearest));
+            invalidate();
+        }
     }
 
     @Override public boolean performClick() { super.performClick(); return true; }

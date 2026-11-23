@@ -111,6 +111,7 @@ public final class MainActivity extends ComponentActivity {
     private final ArrayList<PagePosition> pagePath = new ArrayList<>();
     private final Map<Object, PagePosition> tabPositions = new HashMap<>();
     private final ExecutorService photoLoader = Executors.newFixedThreadPool(2);
+    final ExecutorService dbWorker = Executors.newSingleThreadExecutor();
     private final ArrayList<PhotoRequest> pendingPhotos = new ArrayList<>();
     private final Rect visiblePhotoBounds = new Rect();
     private final OnBackPressedCallback systemBack = new OnBackPressedCallback(false) {
@@ -149,6 +150,7 @@ public final class MainActivity extends ComponentActivity {
         textReader = new ImageAnalysis.BundledText();
         colorReader = new GarmentColors();
         closet = new ClosetScreens(this);
+        closet.prefetchSeasons();
         outfits = new OutfitScreens(this);
         frame = new FrameLayout(this);
         frame.setBackgroundColor(PAPER);
@@ -201,6 +203,7 @@ public final class MainActivity extends ComponentActivity {
         finishPageTransition();
         pageScroll = null;
         photoLoader.shutdownNow();
+        dbWorker.shutdownNow();
         worker.shutdown();
         super.onDestroy();
     }
@@ -269,6 +272,17 @@ public final class MainActivity extends ComponentActivity {
         outline.setStroke(1, INK);
         action.setBackground(outline);
         if (action instanceof TextView text) { text.setTextColor(INK); text.setTextSize(13); }
+    }
+
+    TextView plainHeaderAction(boolean bold) {
+        LinearLayout heading = (LinearLayout) ((LinearLayout) root.getChildAt(0)).getChildAt(0);
+        TextView action = (TextView) heading.getChildAt(heading.getChildCount() - 1);
+        action.setBackgroundColor(android.graphics.Color.TRANSPARENT);
+        action.setTextColor(INK);
+        action.setTextSize(14);
+        action.setTypeface(Typeface.create("sans-serif", bold ? Typeface.BOLD : Typeface.NORMAL));
+        action.setPadding(dp(8), 0, dp(2), 0);
+        return action;
     }
 
     void openTab(int index) {
