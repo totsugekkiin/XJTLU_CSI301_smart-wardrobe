@@ -80,8 +80,7 @@ final class OutfitScreens {
 
     void collection() {
         List<WardrobeStore.Outfit> outfits = db.outfits();
-        ui.page("outfits", "", outfits.isEmpty() ? "" : String.format(java.util.Locale.ROOT, "%02d", outfits.size()), null,
-                "+ 新建穿搭", () -> openDraft(null));
+        ui.outfitPage(outfits.size(), () -> openDraft(null));
         if (draft != null) {
             ui.body.addView(ui.pill("继续编辑 / " + draft.label(), false, draft::render));
         }
@@ -114,9 +113,13 @@ final class OutfitScreens {
             if (!sceneFilter.isEmpty() && !outfit.scene.equals(sceneFilter)) continue;
             shown = true;
             LinearLayout card = ui.card(ui.body);
+            android.graphics.drawable.GradientDrawable outline = ui.shape(Color.WHITE, 4, 0);
+            outline.setStroke(1, 0xffefefef);
+            card.setBackground(outline);
             card.setPadding(0, 0, 0, 0);
             Map<Long, Bitmap> photos = new LinkedHashMap<>();
             OutfitCanvas preview = new OutfitCanvas(ui, outfit.layers, photos::get, () -> {});
+            preview.setBackgroundColor(Color.WHITE);
             for (long garment : outfit.layers.stream().map(layer -> layer.garment).distinct().collect(Collectors.toList())) {
                 WardrobeStore.Garment item = db.garment(garment);
                 if (item != null) ui.loadPhoto(preview, item.photo, 4, bitmap -> {

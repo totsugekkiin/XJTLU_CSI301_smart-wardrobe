@@ -27,6 +27,7 @@ final class OutfitCanvas extends View {
 
     OutfitCanvas(Context context, List<WardrobeStore.Layer> layers, LongFunction<Bitmap> photos, Runnable selectionChanged) {
         super(context);
+        setBackgroundColor(Color.WHITE);
         this.layers = layers;
         this.photos = photos;
         this.selectionChanged = selectionChanged;
@@ -41,7 +42,11 @@ final class OutfitCanvas extends View {
     }
 
     WardrobeStore.Layer selected() { return selected; }
-    void setInteractive(boolean interactive) { this.interactive = interactive; }
+    void setInteractive(boolean interactive) {
+        this.interactive = interactive;
+        setBackgroundColor(Color.WHITE);
+        invalidate();
+    }
 
     void select(WardrobeStore.Layer layer) {
         selected = layer;
@@ -58,12 +63,18 @@ final class OutfitCanvas extends View {
     }
 
     @Override protected void onDraw(Canvas canvas) {
-        canvas.drawColor(interactive ? 0xffffffff : 0xfff5f5f5);
+        canvas.drawColor(Color.WHITE);
         if (interactive) {
             paint.setColor(0xffd6d6d6);
             paint.setStyle(Paint.Style.STROKE);
             paint.setStrokeWidth(2);
             canvas.drawRect(1, 1, getWidth() - 1, getHeight() - 1, paint);
+            paint.setStyle(Paint.Style.FILL);
+        } else {
+            paint.setColor(0xffefefef);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(1);
+            canvas.drawRect(.5f, .5f, getWidth()-.5f, getHeight()-.5f, paint);
             paint.setStyle(Paint.Style.FILL);
         }
         for (WardrobeStore.Layer layer : layers) {
@@ -72,9 +83,11 @@ final class OutfitCanvas extends View {
             paint.setStyle(Paint.Style.FILL);
             if (bitmap != null) canvas.drawBitmap(bitmap, null, bounds, paint);
             else {
-                paint.setColor(0xffeeeeee);
-                canvas.drawRoundRect(bounds, 14, 14, paint);
-                paint.setColor(0xff000000);
+                paint.setColor(0xff111111);
+                paint.setStyle(Paint.Style.STROKE);
+                paint.setStrokeWidth(1);
+                canvas.drawRoundRect(bounds, 4, 4, paint);
+                paint.setStyle(Paint.Style.FILL);
                 paint.setTextSize(36);
                 paint.setTextAlign(Paint.Align.CENTER);
                 canvas.drawText("衣", bounds.centerX(), bounds.centerY() + 12, paint);

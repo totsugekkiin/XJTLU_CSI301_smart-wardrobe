@@ -710,18 +710,32 @@ final class ClosetScreens {
         }
     }
 
-    private void weatherCredit(LinearLayout parent) {
-        TextView credit = ui.ghost("天气来源：Open-Meteo", () -> {
-            try { ui.startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW,
-                    Uri.parse("https://open-meteo.com/"))); } catch (RuntimeException ignored) {}
+    private View weatherRefresh() {
+        View refresh = new View(ui) {
+            private final android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+            private final android.graphics.Path arrow = new android.graphics.Path();
+            @Override protected void onDraw(android.graphics.Canvas canvas) {
+                super.onDraw(canvas);
+                canvas.save();
+                float size = ui.dp(20);
+                canvas.translate((getWidth()-size)/2, (getHeight()-size)/2);
+                canvas.scale(size/24, size/24);
+                paint.setColor(INK); paint.setStyle(android.graphics.Paint.Style.STROKE);
+                paint.setStrokeWidth(24/size); paint.setStrokeCap(android.graphics.Paint.Cap.ROUND);
+                paint.setStrokeJoin(android.graphics.Paint.Join.ROUND);
+                canvas.drawArc(4, 4, 20, 20, 35, 290, false, paint);
+                arrow.reset(); arrow.moveTo(16, 4); arrow.lineTo(20, 7); arrow.lineTo(21, 2);
+                canvas.drawPath(arrow, paint);
+                canvas.restore();
+            }
+        };
+        refresh.setContentDescription("刷新天气");
+        refresh.setFocusable(true);
+        refresh.setOnClickListener(view -> {
+            refresh.animate().rotationBy(360).setDuration(600).start();
+            ui.ensureWeatherPermission(true);
         });
-        credit.setTextSize(11);
-        credit.setTypeface(android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.NORMAL));
-        credit.setMinHeight(ui.dp(32));
-        credit.setMinimumHeight(ui.dp(32));
-        credit.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
-        credit.setPadding(0, 0, 0, 0);
-        parent.addView(credit);
+        return refresh;
     }
 
     private void seasonalReminder(List<WardrobeStore.Garment> garments) {
@@ -740,7 +754,11 @@ final class ClosetScreens {
         String temperature = advice.weatherBased() ? String.format(Locale.ROOT,"气温降至 %.0f°C  ",advice.averageHigh()) : "";
         LinearLayout heading = ui.row();
         heading.setGravity(Gravity.CENTER_VERTICAL);
-        heading.addView(ui.text(temperature + SEASONS[advice.season()] + "季衣橱待唤醒：", 14, INK, true), new LinearLayout.LayoutParams(0, -2, 1));
+        TextView weatherHeading = ui.text(temperature + SEASONS[advice.season()] + "季衣橱待唤醒：", 14, INK, true);
+        weatherHeading.setSingleLine(true);
+        weatherHeading.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        heading.addView(weatherHeading, new LinearLayout.LayoutParams(0, -2, 1));
+        heading.addView(weatherRefresh(), new LinearLayout.LayoutParams(ui.dp(48), ui.dp(48)));
         heading.addView(iconButton(NavIcon.CLOSE, false, "本季度关闭换季提醒", () -> {
             ui.weather.dismissReminder();
             care();
@@ -753,7 +771,6 @@ final class ClosetScreens {
         ui.space(row, 10);
         row.addView(ui.pill("去整理", true, this::openSeasonal));
         card.addView(row);
-        if (advice.weatherBased()) weatherCredit(card);
     }
 
     private void meter(LinearLayout parent, String title, int count, int total) {
@@ -912,9 +929,14 @@ final class ClosetScreens {
         String basis = advice.weatherBased()
                 ? String.format(Locale.ROOT,"未来3天平均最高温 %.0f°C  建议%s季",advice.averageHigh(),SEASONS[advice.season()])
                 : "按当前月份推荐" + SEASONS[advice.season()] + "季";
-        ui.body.addView(ui.text(basis, 13, MUTED, false));
-        if (advice.weatherBased()) weatherCredit(ui.body);
-        if (!ui.weather.hasPermission()) ui.body.addView(ui.ghost("使用当地气温", () -> ui.ensureWeatherPermission(true)));
+        LinearLayout weatherLine = ui.row();
+        weatherLine.setGravity(Gravity.CENTER_VERTICAL);
+        TextView weatherText = ui.text(basis, 13, INK, false);
+        weatherText.setSingleLine(true);
+        weatherText.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        weatherLine.addView(weatherText, new LinearLayout.LayoutParams(0, -2, 1));
+        weatherLine.addView(weatherRefresh(), new LinearLayout.LayoutParams(ui.dp(48), ui.dp(48)));
+        ui.body.addView(weatherLine);
         ui.gap(ui.body, 14);
         LinearLayout seasons = ui.row();
         for (int i = 0; i < SEASONS.length; i++) {
@@ -1182,6 +1204,12 @@ final class ClosetScreens {
         if (garment.stored) return WearStatus.STORED;
         if (!reminder(garment, usage).isEmpty()) return WearStatus.CARE;
         return WearStatus.READY;
+    }
+
+    void addForMotion(String type, Runnable back) {
+        WardrobeStore.Garment garment = new WardrobeStore.Garment();
+        garment.type = type == null ? "上衣" : type;
+        editor(garment, back);
     }
 
     private Editor editor(WardrobeStore.Garment g, Runnable back) {

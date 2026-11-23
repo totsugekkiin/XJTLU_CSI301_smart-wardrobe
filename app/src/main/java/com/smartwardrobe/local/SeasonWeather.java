@@ -78,11 +78,19 @@ final class SeasonWeather implements AutoCloseable {
     void dismissReminder() { prefs.edit().putString("dismissed_quarter", SeasonPolicy.quarter(LocalDate.now())).apply(); }
 
     void refreshIfDue() {
+        refresh(false);
+    }
+
+    void refreshNow() {
+        refresh(true);
+    }
+
+    private void refresh(boolean force) {
         if (closed || busy || !hasPermission() || !online()) return;
         String today = LocalDate.now().toString();
-        if (today.equals(prefs.getString("last_attempt_day", ""))) return;
+        if (!force && today.equals(prefs.getString("last_attempt_day", ""))) return;
         // A same-day cached success needs no second request after an activity restart.
-        if (SeasonPolicy.fresh(prefs.getLong("fetched_at", 0), System.currentTimeMillis())
+        if (!force && SeasonPolicy.fresh(prefs.getLong("fetched_at", 0), System.currentTimeMillis())
                 && today.equals(prefs.getString("fetched_day", ""))) return;
         busy = true;
         try {
@@ -90,13 +98,13 @@ final class SeasonWeather implements AutoCloseable {
             if (!manager.isLocationEnabled()) { busy = false; return; }
             Location cached = manager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
             long age = cached == null ? Long.MAX_VALUE : System.currentTimeMillis() - cached.getTime();
-            if (cached != null && age >= 0 && age < SeasonPolicy.CACHE_MS) { fetch(cached); return; }
+            if (cached != null && age >= 0 && age < SeasonPolicy.CACHE_MS) { fetch(cached, force); return; }
             if (!manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) { busy = false; return; }
             listener = new LocationListener() {
                 @Override public void onLocationChanged(Location location) {
                     if (listener != this) return;
                     stopLocation();
-                    fetch(location);
+                    fetch(location, force);
                 }
                 @Override public void onProviderDisabled(String provider) { stopLocation(); busy = false; }
                 @Override public void onProviderEnabled(String provider) {}
@@ -105,15 +113,16 @@ final class SeasonWeather implements AutoCloseable {
             locationTimeout = () -> { stopLocation(); busy = false; };
             manager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 0, 0, listener, Looper.getMainLooper());
             main.postDelayed(locationTimeout, 10_000);
-        } catch (RuntimeException ignored) { stopLocation(); busy = false; }
+        } catch (SecurityException ignored) { stopLocation(); busy = false; }
+        catch (RuntimeException ignored) { stopLocation(); busy = false; }
     }
 
-    private void fetch(Location location) {
+    private void fetch(Location location, boolean force) {
         if (closed || !hasPermission()) { busy = false; return; }
         if (!Double.isFinite(location.getLatitude()) || !Double.isFinite(location.getLongitude())
                 || Math.abs(location.getLatitude()) > 90 || Math.abs(location.getLongitude()) > 180) { busy = false; return; }
         String today = LocalDate.now().toString();
-        if (today.equals(prefs.getString("last_attempt_day", ""))) { busy = false; return; }
+        if (!force && today.equals(prefs.getString("last_attempt_day", ""))) { busy = false; return; }
         prefs.edit().putString("last_attempt_day", today).putLong("last_attempt_at", System.currentTimeMillis()).apply();
         // Discard coordinates after this request. No precise provider or stored location history.
         double latitude = Math.round(location.getLatitude() * 100) / 100d;
@@ -129,6 +138,10 @@ final class SeasonWeather implements AutoCloseable {
                 request.setConnectTimeout(5_000);
                 request.setReadTimeout(5_000);
                 request.setRequestProperty("Accept", "application/json");
+                if (force) {
+                    request.setUseCaches(false);
+                    request.setRequestProperty("Cache-Control", "no-cache");
+                }
                 if (request.getResponseCode() != 200) return;
                 byte[] bytes;
                 try (InputStream stream = request.getInputStream(); java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream()) {

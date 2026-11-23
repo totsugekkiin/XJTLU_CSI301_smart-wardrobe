@@ -53,6 +53,40 @@ public final class MainActivity extends ComponentActivity {
     private static final int PICK = 14, CAMERA = 15, SCAN_CARE = 16, PHOTO_PERMISSION = 17;
     private static final int PICK_BATCH = 18;
     private static final int COARSE_WEATHER = 19;
+    private static final int MOTION_OUTFIT = 20;
+
+    void openMotionOutfit() {
+        startActivityForResult(new Intent(this, MotionOutfitActivity.class), MOTION_OUTFIT);
+    }
+
+    void outfitPage(int count, Runnable add) {
+        page("outfits", "", "", null, null, null);
+        LinearLayout header = (LinearLayout) root.getChildAt(0);
+        header.setPadding(dp(20), dp(4), dp(20), dp(4));
+        LinearLayout top = (LinearLayout) ((LinearLayout) root.getChildAt(0)).getChildAt(0);
+        top.removeAllViews();
+        top.setMinimumHeight(dp(50));
+        TextView amount = text(count + " 套穿搭", 13, INK, false);
+        amount.setFontFeatureSettings("tnum");
+        amount.setGravity(Gravity.CENTER_VERTICAL);
+        amount.setSingleLine(true);
+        top.addView(amount, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView entry = text("体感搭配", 14, INK, false);
+        entry.setGravity(Gravity.CENTER);
+        entry.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
+        entry.setContentDescription("体感搭配");
+        entry.setOnClickListener(view -> openMotionOutfit());
+        entry.setFocusable(true);
+        Motion.press(entry);
+        top.addView(entry, new LinearLayout.LayoutParams(-2, dp(48)));
+        space(top, 16);
+        TextView create = text("+ 新建", 13, PAPER, false);
+        create.setGravity(Gravity.CENTER);
+        create.setPadding(dp(14), 0, dp(14), 0);
+        click(create, INK, 4, 0, add);
+        top.addView(create, new LinearLayout.LayoutParams(-2, dp(34)));
+        coachTarget("header-action", create);
+    }
 
     WardrobeStore db;
     ClosetScreens closet;
@@ -194,7 +228,10 @@ public final class MainActivity extends ComponentActivity {
 
     void ensureWeatherPermission(boolean explicit) {
         if (!explicit && guiding()) return;
-        if (weather.hasPermission()) { weather.refreshIfDue(); return; }
+        if (weather.hasPermission()) {
+            if (explicit) weather.refreshNow(); else weather.refreshIfDue();
+            return;
+        }
         if (!explicit && weather.permissionAsked()) return;
         if (explicit && weather.permissionAsked()
                 && !shouldShowRequestPermissionRationale(android.Manifest.permission.ACCESS_COARSE_LOCATION)) {
@@ -998,7 +1035,7 @@ public final class MainActivity extends ComponentActivity {
     @Override public void onRequestPermissionsResult(int code, String[] permissions, int[] grants) {
         super.onRequestPermissionsResult(code, permissions, grants);
         if (code == COARSE_WEATHER) {
-            weather.refreshIfDue();
+            weather.refreshNow();
             closet.weatherChanged();
             return;
         }
@@ -1021,6 +1058,16 @@ public final class MainActivity extends ComponentActivity {
 
     @Override protected void onActivityResult(int code, int result, Intent data) {
         super.onActivityResult(code, result, data);
+        if (code == MOTION_OUTFIT) {
+            outfits.collection();
+            if (result == RESULT_OK && data != null) {
+                closet.addForMotion(data.getStringExtra("type"), () -> {
+                    outfits.collection();
+                    openMotionOutfit();
+                });
+            }
+            return;
+        }
         if (code == PICK_BATCH) {
             if (result != RESULT_OK || data == null) return;
             var images = new java.util.LinkedHashSet<Uri>();
