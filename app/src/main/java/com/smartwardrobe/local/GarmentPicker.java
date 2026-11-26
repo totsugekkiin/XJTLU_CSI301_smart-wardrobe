@@ -1,8 +1,13 @@
 package com.smartwardrobe.local;
 
+import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.StateListDrawable;
+import android.view.Gravity;
 import android.view.View;
 import android.widget.CheckBox;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -19,6 +24,7 @@ import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 import static com.smartwardrobe.local.MainActivity.INK;
+import static com.smartwardrobe.local.MainActivity.MUTED;
 import static com.smartwardrobe.local.MainActivity.STROKE;
 
 final class GarmentPicker {
@@ -32,10 +38,13 @@ final class GarmentPicker {
         }
     }
 
-    private static final String[] FAMILIES = {"黑色", "白色", "灰色", "蓝色", "大地色",
+    static final String[] FAMILIES = {"黑色", "白色", "灰色", "蓝色", "大地色",
             "红色", "粉色", "橙色", "黄色", "绿色", "青色", "紫色"};
+    static final int[] FAMILY_COLORS = {0xff242424, 0xffffffff, 0xff929292, 0xff4275bd,
+            0xffa97953, 0xffca4b4b, 0xffdf99af, 0xffe48e42, 0xffddc34c, 0xff629666,
+            0xff55a9b2, 0xff9271b0};
 
-    private static String family(WardrobeStore.Swatch swatch) {
+    static String family(WardrobeStore.Swatch swatch) {
         String name = ImageAnalysis.colorName(swatch.rgb);
         return name.equals("米色") || name.equals("棕色") ? "大地色" : name;
     }
@@ -65,8 +74,18 @@ final class GarmentPicker {
                              boolean multiple, CanvasPalette palette) {
         Sheet sheet = new Sheet(ui, title, true);
         LinearLayout tabs = ui.row();
-        if (palette != null) sheet.content.addView(tabs);
-        EditText query = ui.field(sheet.content, "搜索名称或品牌", initial.query(), false, false);
+        if (palette != null) {
+            sheet.hideHeaderRule();
+            sheet.content.addView(tabs);
+            ui.gap(sheet.content, 12);
+        }
+        EditText query = ui.field(sheet.content, "", initial.query(), false, false);
+        query.setHint("搜索名称或品牌");
+        query.setContentDescription("搜索名称或品牌");
+        StateListDrawable square = new StateListDrawable();
+        square.addState(new int[]{android.R.attr.state_focused}, ui.shape(Color.WHITE, 0, INK));
+        square.addState(new int[0], ui.shape(Color.WHITE, 0, STROKE));
+        query.setBackground(square);
         LinearLayout categories = strip(ui, sheet.content);
         LinearLayout colors = strip(ui, sheet.content);
         String[] type = {initial.type()}, color = {initial.color()};
@@ -87,13 +106,14 @@ final class GarmentPicker {
                 if (palette != null && !palette.matches(garment)) continue;
                 if (multiple) {
                     CheckBox choice = new CheckBox(ui);
-                    choice.setText(garment.name + " / " + garment.type);
+                    choice.setText(garment.name + " / " + UiLanguage.text(ui, garment.type));
                     choice.setMinHeight(ui.dp(48));
                     choice.setChecked(picked.contains(garment));
                     choice.setOnCheckedChangeListener((button, checked) -> {
                         if (checked) picked.add(garment);
                         else picked.remove(garment);
-                        count.setText("已选 " + picked.size() + " 件");
+                        count.setText(UiLanguage.english(ui) ? picked.size() + " selected"
+                                : "已选 " + picked.size() + " 件");
                     });
                     list.addView(choice);
                 } else ui.closet.itemCard(list, garment, garment.type, () -> {
@@ -108,7 +128,7 @@ final class GarmentPicker {
         List<String> types = garments.stream().map(g -> g.type).filter(value -> !value.isEmpty()).distinct().sorted()
                 .collect(java.util.stream.Collectors.toList());
         filters(ui, categories, "全部类别", types, type, render);
-        filters(ui, colors, "全部颜色", java.util.Arrays.asList(FAMILIES), color, render);
+        colorFilters(ui, colors, color, render);
         watch(query, render);
         if (palette != null) palette.bind(ui, tabs, wheelPanel, render);
         else render.run();
@@ -151,8 +171,12 @@ final class GarmentPicker {
             if (!enabled || colors.isEmpty()) return;
             sample.setBackground(ui.shape(activeColor, 10, STROKE));
             String harmony = anchor == null ? "" : ClosetWheel.harmony(anchor.rgb, activeColor);
-            summary.setText(colors.get(activeColor) + " / " + count + " 件"
-                    + (harmony.isEmpty() ? "" : " / " + harmony));
+            summary.setText(UiLanguage.english(ui)
+                    ? UiLanguage.text(ui, colors.get(activeColor)) + " · " + count
+                            + (count == 1 ? " item" : " items")
+                            + (harmony.isEmpty() ? "" : " · " + UiLanguage.text(ui, harmony))
+                    : colors.get(activeColor) + " / " + count + " 件"
+                            + (harmony.isEmpty() ? "" : " / " + harmony));
         }
 
         void bind(MainActivity ui, LinearLayout tabs, LinearLayout panel, Runnable refresh) {
@@ -168,7 +192,7 @@ final class GarmentPicker {
                         chip.addView(dot);
                         ui.space(chip, 5);
                     }
-                    chip.addView(ui.text(garment.name, 12, INK, true));
+                    chip.addView(ui.userText(garment.name, 12, INK, true));
                     chips.addView(chip);
                     ui.space(chips, 6);
                 }
@@ -207,13 +231,20 @@ final class GarmentPicker {
                              boolean showWheel, Runnable refresh) {
             enabled = showWheel && !colors.isEmpty();
             tabs.removeAllViews();
-            tabs.addView(ui.pill("全部单品", !showWheel, () -> showTab(ui, tabs, panel, false, refresh)),
+            tabs.addView(tab(ui, "全部单品", !showWheel,
+                            () -> showTab(ui, tabs, panel, false, refresh)),
                     new LinearLayout.LayoutParams(0, -2, 1));
-            ui.space(tabs, 7);
-            tabs.addView(ui.pill("圆盘色盘", showWheel, () -> showTab(ui, tabs, panel, true, refresh)),
+            tabs.addView(tab(ui, "圆盘色盘", showWheel,
+                            () -> showTab(ui, tabs, panel, true, refresh)),
                     new LinearLayout.LayoutParams(0, -2, 1));
             Motion.expand(panel, showWheel);
             refresh.run();
+        }
+
+        private TextView tab(MainActivity ui, String label, boolean selected, Runnable action) {
+            TextView button = ui.pill(label, selected, action);
+            ui.click(button, selected ? INK : Color.WHITE, 0, selected ? 0 : STROKE, action);
+            return button;
         }
     }
 
@@ -227,23 +258,87 @@ final class GarmentPicker {
         return row;
     }
 
-    private static void filters(MainActivity ui, LinearLayout row, String all, List<String> options,
+    static void filters(MainActivity ui, LinearLayout row, String all, List<String> options,
                                 String[] value, Runnable refresh) {
         row.removeAllViews();
-        chip(ui, row, all, "", all, options, value, refresh);
-        for (String option : options) chip(ui, row, option, option, all, options, value, refresh);
+        categoryOption(ui, row, all, "", all, options, value, refresh);
+        for (String option : options) categoryOption(ui, row, option, option, all, options, value, refresh);
     }
 
-    private static void chip(MainActivity ui, LinearLayout row, String label, String key, String all,
-                             List<String> options, String[] value, Runnable refresh) {
-        TextView button = ui.pill(label, key.equals(value[0]), () -> {
+    private static void categoryOption(MainActivity ui, LinearLayout row, String label, String key, String all,
+                                       List<String> options, String[] value, Runnable refresh) {
+        boolean active = key.equals(value[0]);
+        FrameLayout target = new FrameLayout(ui);
+        target.setMinimumWidth(ui.dp(48));
+        target.setContentDescription(label + (active ? "，已选中" : ""));
+        target.setSelected(active);
+        TextView text = ui.text(label, 13, active ? INK : 0xff888888, active);
+        text.setGravity(Gravity.CENTER);
+        text.setPadding(ui.dp(12), 0, ui.dp(12), 0);
+        target.addView(text, new FrameLayout.LayoutParams(-2, -1, Gravity.CENTER));
+        if (active) {
+            View marker = new View(ui);
+            marker.setBackgroundColor(INK);
+            marker.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            FrameLayout.LayoutParams markerParams = new FrameLayout.LayoutParams(ui.dp(18), ui.dp(2),
+                    Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+            markerParams.topMargin = ui.dp(4);
+            target.addView(marker, markerParams);
+        }
+        ui.click(target, Color.TRANSPARENT, 0, 0, () -> {
             value[0] = key;
             filters(ui, row, all, options, value, refresh);
             refresh.run();
         });
-        button.setMinHeight(ui.dp(48));
-        button.setSelected(key.equals(value[0]));
-        row.addView(button);
+        row.addView(target, new LinearLayout.LayoutParams(-2, ui.dp(48)));
+        ui.space(row, 8);
+    }
+
+    private static void colorFilters(MainActivity ui, LinearLayout row, String[] value, Runnable refresh) {
+        row.removeAllViews();
+        boolean allSelected = value[0].isEmpty();
+        TextView all = ui.text("ALL", 14, allSelected ? INK : MUTED, allSelected);
+        all.setGravity(Gravity.CENTER);
+        all.setMinWidth(ui.dp(48));
+        all.setMinHeight(ui.dp(48));
+        all.setContentDescription("全部颜色");
+        all.setSelected(allSelected);
+        ui.click(all, Color.TRANSPARENT, 0, 0, () -> {
+            value[0] = "";
+            colorFilters(ui, row, value, refresh);
+            refresh.run();
+        });
+        row.addView(all, new LinearLayout.LayoutParams(ui.dp(48), ui.dp(48)));
         ui.space(row, 6);
+        for (int i = 0; i < FAMILIES.length; i++) {
+            String family = FAMILIES[i];
+            boolean selected = family.equals(value[0]);
+            FrameLayout target = new FrameLayout(ui);
+            target.setContentDescription(family);
+            target.setSelected(selected);
+            if (selected) {
+                View ring = new View(ui);
+                GradientDrawable outline = new GradientDrawable();
+                outline.setShape(GradientDrawable.OVAL);
+                outline.setColor(Color.TRANSPARENT);
+                outline.setStroke(ui.dp(2), INK);
+                ring.setBackground(outline);
+                target.addView(ring, new FrameLayout.LayoutParams(ui.dp(40), ui.dp(40), Gravity.CENTER));
+            }
+            View ball = new View(ui);
+            GradientDrawable fill = new GradientDrawable();
+            fill.setShape(GradientDrawable.OVAL);
+            fill.setColor(FAMILY_COLORS[i]);
+            if (family.equals("白色")) fill.setStroke(ui.dp(1), 0xffbdbdbd);
+            ball.setBackground(fill);
+            target.addView(ball, new FrameLayout.LayoutParams(ui.dp(30), ui.dp(30), Gravity.CENTER));
+            ui.click(target, Color.TRANSPARENT, 0, 0, () -> {
+                value[0] = family;
+                colorFilters(ui, row, value, refresh);
+                refresh.run();
+            });
+            row.addView(target, new LinearLayout.LayoutParams(ui.dp(48), ui.dp(48)));
+            ui.space(row, 6);
+        }
     }
 }

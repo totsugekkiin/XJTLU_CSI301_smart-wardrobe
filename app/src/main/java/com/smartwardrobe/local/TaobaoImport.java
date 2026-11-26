@@ -99,19 +99,21 @@ final class TaobaoImport {
         this.chooseScreenshot = chooseScreenshot;
     }
 
+    private String tr(String text) { return UiLanguage.text(ui, text); }
+
     void start() {
         EditText input = new EditText(ui);
-        input.setHint("粘贴淘宝分享内容或商品链接");
+        input.setHint(tr("粘贴淘宝分享内容或商品链接"));
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE
                 | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
         input.setMinLines(3);
         AlertDialog dialog = new AlertDialog.Builder(ui)
-                .setTitle("网购导入")
-                .setMessage("粘贴淘宝链接，或选择商品截图。")
+                .setTitle(tr("网购导入"))
+                .setMessage(tr("粘贴淘宝链接，或选择商品截图。"))
                 .setView(input)
-                .setNegativeButton("取消", null)
-                .setNeutralButton("选截图", (ignored, which) -> chooseScreenshot.run())
-                .setPositiveButton("导入链接", null)
+                .setNegativeButton(tr("取消"), null)
+                .setNeutralButton(tr("选截图"), (ignored, which) -> chooseScreenshot.run())
+                .setPositiveButton(tr("导入链接"), null)
                 .create();
         dialog.setOnShowListener(ignored -> {
             Button proceed = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
@@ -120,14 +122,14 @@ final class TaobaoImport {
                 @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
                 @Override public void afterTextChanged(Editable text) {
                     Input parsed = parseInput(text.toString());
-                    if (parsed == null) proceed.setText("导入链接");
-                    else proceed.setText(isImage(parsed.url) ? "预览图片" : "打开商品页");
+                    if (parsed == null) proceed.setText(tr("导入链接"));
+                    else proceed.setText(tr(isImage(parsed.url) ? "预览图片" : "打开商品页"));
                 }
             });
             proceed.setOnClickListener(view -> {
                 Input parsed = parseInput(input.getText().toString());
                 if (parsed == null) {
-                    input.setError("请粘贴淘宝链接或分享内容");
+                    input.setError(tr("请粘贴淘宝链接或分享内容"));
                     return;
                 }
                 dialog.dismiss();
@@ -222,22 +224,22 @@ final class TaobaoImport {
 
     private void imageFallback(String name, Uri productUrl) {
         EditText field = new EditText(ui);
-        field.setHint("粘贴商品图片链接");
+        field.setHint(tr("粘贴商品图片链接"));
         field.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
         AlertDialog.Builder panel = new AlertDialog.Builder(ui)
-                .setTitle("图片链接导入")
-                .setMessage("在浏览器打开商品主图，复制图片地址后粘贴。"
-                        + (name.isEmpty() ? "" : "\n商品：" + name))
+                .setTitle(tr("图片链接导入"))
+                .setMessage(tr("在浏览器打开商品主图，复制图片地址后粘贴。")
+                        + (name.isEmpty() ? "" : tr("\n商品：") + name))
                 .setView(field)
-                .setNegativeButton("取消", null)
-                .setPositiveButton("预览图片", null);
-        if (productUrl != null) panel.setNeutralButton("打开商品页", null);
+                .setNegativeButton(tr("取消"), null)
+                .setPositiveButton(tr("预览图片"), null);
+        if (productUrl != null) panel.setNeutralButton(tr("打开商品页"), null);
         AlertDialog dialog = panel.create();
         dialog.setOnShowListener(ignored -> {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(view -> {
                 Input parsed = parseInput(field.getText().toString());
                 if (parsed == null || !isImage(parsed.url)) {
-                    field.setError("请粘贴完整图片链接");
+                    field.setError(tr("请粘贴完整图片链接"));
                     return;
                 }
                 dialog.dismiss();
@@ -247,7 +249,7 @@ final class TaobaoImport {
                 Intent open = new Intent(Intent.ACTION_VIEW, productUrl).addCategory(Intent.CATEGORY_BROWSABLE);
                 try { ui.startActivity(open); }
                 catch (ActivityNotFoundException failure) {
-                    field.setError("请在浏览器打开商品");
+                    field.setError(tr("请在浏览器打开商品"));
                 }
             });
         });
@@ -261,11 +263,11 @@ final class TaobaoImport {
         layout.setOrientation(LinearLayout.VERTICAL);
         LinearLayout toolbar = new LinearLayout(ui);
         Button close = new Button(ui);
-        close.setText("关闭");
+        close.setText(tr("关闭"));
         Button read = new Button(ui);
-        read.setText("选商品图");
+        read.setText(tr("选商品图"));
         Button fallback = new Button(ui);
-        fallback.setText("用图片地址");
+        fallback.setText(tr("用图片地址"));
         toolbar.addView(close);
         toolbar.addView(read, new LinearLayout.LayoutParams(0, -2, 1));
         toolbar.addView(fallback);
@@ -273,9 +275,9 @@ final class TaobaoImport {
         WebView web;
         try { web = new WebView(ui); }
         catch (RuntimeException failure) {
-            new AlertDialog.Builder(ui).setTitle("无法打开淘宝网页")
-                    .setMessage("请在浏览器打开商品，复制图片地址导入。")
-                    .setPositiveButton("用图片地址", (d, w) -> imageFallback(input.name, input.url)).show();
+            new AlertDialog.Builder(ui).setTitle(tr("无法打开淘宝网页"))
+                    .setMessage(tr("请在浏览器打开商品，复制图片地址导入。"))
+                    .setPositiveButton(tr("用图片地址"), (d, w) -> imageFallback(input.name, input.url)).show();
             return;
         }
         layout.addView(web, new LinearLayout.LayoutParams(-1, 0, 1));
@@ -378,30 +380,31 @@ final class TaobaoImport {
         }, bitmap -> {
             int total = product.images.size();
             AlertDialog.Builder panel = new AlertDialog.Builder(ui)
-                    .setTitle(total == 1 ? "商品图片" : "商品图片 " + (index + 1) + " / " + total)
-                    .setNegativeButton("取消", null);
+                    .setTitle(total == 1 ? tr("商品图片")
+                            : tr("商品图片") + " " + (index + 1) + " / " + total)
+                    .setNegativeButton(tr("取消"), null);
             if (bitmap == null) {
-                panel.setMessage("图片读取失败 / 请返回或换一张");
+                panel.setMessage(tr("图片读取失败 / 请返回或换一张"));
             } else {
                 ImageView image = new ImageView(ui);
                 image.setImageBitmap(bitmap);
                 image.setScaleType(ImageView.ScaleType.FIT_CENTER);
                 LinearLayout content = new LinearLayout(ui);
                 content.addView(image, new LinearLayout.LayoutParams(-1, ui.dp(290)));
-                panel.setView(content).setPositiveButton("使用此图", (dialog, which) -> {
+                panel.setView(content).setPositiveButton(tr("使用此图"), (dialog, which) -> {
                     if (finish != null) finish.run();
                     onImport.accept(new Result(product.name, bitmap));
                 });
             }
-            if (total > 1) panel.setNeutralButton("下一张", (dialog, which) ->
+            if (total > 1) panel.setNeutralButton(tr("下一张"), (dialog, which) ->
                     preview(product, (index + 1) % total, finish));
             panel.show();
         });
     }
 
     private void message(String title, String detail) {
-        new AlertDialog.Builder(ui).setTitle(title).setMessage(detail)
-                .setPositiveButton("知道了", null).show();
+        new AlertDialog.Builder(ui).setTitle(tr(title)).setMessage(tr(detail))
+                .setPositiveButton(tr("知道了"), null).show();
     }
 
     private static boolean hostIs(String host, String domain) {

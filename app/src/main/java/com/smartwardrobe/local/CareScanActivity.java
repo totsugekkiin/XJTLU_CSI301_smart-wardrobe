@@ -101,6 +101,10 @@ public final class CareScanActivity extends FragmentActivity {
         ScrollView scroll = new ScrollView(this);
         scroll.setBackgroundColor(Color.WHITE);
         scroll.setVerticalScrollBarEnabled(false);
+        scroll.getViewTreeObserver().addOnPreDrawListener(() -> {
+            UiLanguage.localizeTree(scroll);
+            return true;
+        });
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
         page.setBackgroundColor(Color.WHITE);
@@ -208,7 +212,7 @@ public final class CareScanActivity extends FragmentActivity {
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
 
     private TextView text(String label, int size) {
-        TextView view = new TextView(this);
+        TextView view = new UiLanguage.Label(this);
         view.setText(label);
         view.setTextColor(INK);
         view.setTextSize(size);
@@ -224,7 +228,7 @@ public final class CareScanActivity extends FragmentActivity {
     private TextView secondary(String label, int size) {
         Button view = new Button(this, null, 0);
         view.setAllCaps(false);
-        view.setText(label);
+        view.setText(UiLanguage.text(this, label));
         view.setTextSize(size);
         view.setTextColor(INK);
         view.setGravity(Gravity.CENTER);

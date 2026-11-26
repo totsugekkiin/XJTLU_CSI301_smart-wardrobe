@@ -30,6 +30,7 @@ import android.view.WindowInsets;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -84,6 +85,10 @@ public final class MotionOutfitActivity extends Activity implements SensorEventL
         if (android.os.Build.VERSION.SDK_INT >= 30) getWindow().setDecorFitsSystemWindows(false);
         root = column();
         root.setBackgroundColor(Color.WHITE);
+        root.getViewTreeObserver().addOnPreDrawListener(() -> {
+            UiLanguage.localizeTree(root);
+            return true;
+        });
         root.setOnApplyWindowInsetsListener((view, insets) -> {
             if (android.os.Build.VERSION.SDK_INT >= 30) {
                 var bars = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
@@ -99,6 +104,13 @@ public final class MotionOutfitActivity extends Activity implements SensorEventL
             colorFilter = state.getString("colorFilter", "");
         }
         pool.addAll(db.garments());
+        if (!colorFilter.isEmpty() && java.util.Arrays.stream(GarmentPicker.FAMILIES)
+                .noneMatch(colorFilter::equals)) {
+            String previous = colorFilter;
+            colorFilter = pool.stream().flatMap(garment -> garment.colors.stream())
+                    .filter(swatch -> swatch.name.equals(previous)).map(GarmentPicker::family)
+                    .findFirst().orElse("");
+        }
         LinearLayout nav = row();
         nav.setPadding(dp(12), dp(6), dp(20), dp(6));
         TextView back = button("<", false, this::finish);
@@ -197,7 +209,8 @@ public final class MotionOutfitActivity extends Activity implements SensorEventL
             for (var garment : pool) {
                 if (garment.archived || garment.stored) continue;
                 if (seasonFilter >= 0 && (garment.seasons & (1 << seasonFilter)) == 0) continue;
-                if (!colorFilter.isEmpty() && garment.colors.stream().noneMatch(c -> c.name.equals(colorFilter))) continue;
+                if (!colorFilter.isEmpty() && garment.colors.stream()
+                        .noneMatch(c -> GarmentPicker.family(c).equals(colorFilter))) continue;
                 boolean belongs = wheel.row == 0 ? isOuter(garment.type)
                         : wheel.row == 2 ? isBottom(garment.type) : isTop(garment.type) && (!threePiece || !isOuter(garment.type));
                 if (belongs) wheel.items.add(garment);
@@ -261,7 +274,7 @@ public final class MotionOutfitActivity extends Activity implements SensorEventL
         seasonHeading.setPadding(0, dp(20), 0, dp(8)); panel.addView(seasonHeading);
         int[] pendingSeason = {seasonFilter};
         String[] pendingColor = {colorFilter};
-        List<TextView> seasonButtons = new ArrayList<>(), colorButtons = new ArrayList<>();
+        List<TextView> seasonButtons = new ArrayList<>();
         LinearLayout seasons = row();
         String[] seasonLabels = {"全部", "春", "夏", "秋", "冬"};
         for (int i = 0; i < seasonLabels.length; i++) {
@@ -275,23 +288,19 @@ public final class MotionOutfitActivity extends Activity implements SensorEventL
         panel.addView(seasons);
         TextView colorHeading = text("颜色", 13);
         colorHeading.setPadding(0, dp(18), 0, dp(8)); panel.addView(colorHeading);
-        android.widget.ScrollView scroll = new android.widget.ScrollView(this);
-        LinearLayout colors = column(); scroll.addView(colors);
-        List<String> colorNames = new ArrayList<>(); colorNames.add("");
-        for (var garment : pool) if (!garment.archived && !garment.stored)
-            for (var swatch : garment.colors) if (!swatch.name.isEmpty() && !colorNames.contains(swatch.name)) colorNames.add(swatch.name);
-        for (int i = 0; i < colorNames.size(); i++) {
-            final int choice = i;
-            String color = colorNames.get(i);
-            TextView item = button(color.isEmpty() ? "全部颜色" : color, false, () -> {});
-            colorButtons.add(item);
-            item.setOnClickListener(view -> { pendingColor[0] = color; selectFilter(colorButtons, choice); });
-            colors.addView(item, new LinearLayout.LayoutParams(-1, dp(44)));
-        }
-        selectFilter(colorButtons, Math.max(0, colorNames.indexOf(colorFilter)));
-        panel.addView(scroll, new LinearLayout.LayoutParams(-1, Math.min(dp(176), colorNames.size() * dp(44))));
+        HorizontalScrollView scroll = new HorizontalScrollView(this);
+        scroll.setHorizontalScrollBarEnabled(false);
+        LinearLayout colors = row();
+        scroll.addView(colors);
+        drawColorFilters(colors, pendingColor);
+        panel.addView(scroll, new LinearLayout.LayoutParams(-1, dp(48)));
         LinearLayout actions = row(); actions.setGravity(Gravity.END); actions.setPadding(0, dp(18), 0, 0);
-        actions.addView(button("重置", false, () -> { pendingSeason[0] = -1; pendingColor[0] = ""; selectFilter(seasonButtons, 0); selectFilter(colorButtons, 0); }), new LinearLayout.LayoutParams(dp(64), dp(44)));
+        actions.addView(button("重置", false, () -> {
+            pendingSeason[0] = -1;
+            pendingColor[0] = "";
+            selectFilter(seasonButtons, 0);
+            drawColorFilters(colors, pendingColor);
+        }), new LinearLayout.LayoutParams(dp(64), dp(44)));
         actions.addView(button("应用", true, () -> {
             seasonFilter = pendingSeason[0]; colorFilter = pendingColor[0];
             rebuildPools(); updateControls(); dialog.dismiss();
@@ -301,6 +310,51 @@ public final class MotionOutfitActivity extends Activity implements SensorEventL
         dialog.show();
         dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
         dialog.getWindow().setLayout(getResources().getDisplayMetrics().widthPixels - dp(40), -2);
+    }
+
+    private void drawColorFilters(LinearLayout row, String[] chosen) {
+        row.removeAllViews();
+        TextView all = text("ALL", 14);
+        all.setGravity(Gravity.CENTER);
+        all.setMinWidth(dp(48));
+        all.setMinHeight(dp(48));
+        all.setSelected(chosen[0].isEmpty());
+        all.setTextColor(all.isSelected() ? INK : 0xff686868);
+        all.setTypeface(null, all.isSelected() ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+        all.setContentDescription(UiLanguage.text(this, "全部颜色"));
+        all.setOnClickListener(view -> { chosen[0] = ""; drawColorFilters(row, chosen); });
+        all.setFocusable(true);
+        Motion.press(all);
+        row.addView(all, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        row.addView(new View(this), new LinearLayout.LayoutParams(dp(6), 1));
+        for (int i = 0; i < GarmentPicker.FAMILIES.length; i++) {
+            String family = GarmentPicker.FAMILIES[i];
+            FrameLayout target = new FrameLayout(this);
+            target.setSelected(family.equals(chosen[0]));
+            target.setContentDescription(UiLanguage.text(this, family
+                    + (target.isSelected() ? "，已选中" : "")));
+            if (target.isSelected()) {
+                View ring = new View(this);
+                GradientDrawable outline = new GradientDrawable();
+                outline.setShape(GradientDrawable.OVAL);
+                outline.setColor(Color.TRANSPARENT);
+                outline.setStroke(dp(2), INK);
+                ring.setBackground(outline);
+                target.addView(ring, new FrameLayout.LayoutParams(dp(40), dp(40), Gravity.CENTER));
+            }
+            View ball = new View(this);
+            GradientDrawable fill = new GradientDrawable();
+            fill.setShape(GradientDrawable.OVAL);
+            fill.setColor(GarmentPicker.FAMILY_COLORS[i]);
+            if (family.equals("白色")) fill.setStroke(dp(1), 0xffbdbdbd);
+            ball.setBackground(fill);
+            target.addView(ball, new FrameLayout.LayoutParams(dp(30), dp(30), Gravity.CENTER));
+            target.setOnClickListener(view -> { chosen[0] = family; drawColorFilters(row, chosen); });
+            target.setFocusable(true);
+            Motion.press(target);
+            row.addView(target, new LinearLayout.LayoutParams(dp(48), dp(48)));
+            row.addView(new View(this), new LinearLayout.LayoutParams(dp(6), 1));
+        }
     }
 
     private void selectFilter(List<TextView> buttons, int selected) {
@@ -451,7 +505,7 @@ public final class MotionOutfitActivity extends Activity implements SensorEventL
         input.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);
         input.setTextColor(INK);
         input.setHintTextColor(INK);
-        input.setHint("穿搭名称");
+        input.setHint(UiLanguage.text(this, "穿搭名称"));
         input.setTextSize(16);
         input.setPadding(0, dp(16), 0, dp(12));
         input.setBackgroundColor(Color.WHITE);
@@ -466,7 +520,7 @@ public final class MotionOutfitActivity extends Activity implements SensorEventL
         actions.addView(button("取消", false, nameDialog::dismiss), new LinearLayout.LayoutParams(dp(64), dp(40)));
         TextView confirm = button("保存", true, () -> {
             String name = input.getText().toString().trim();
-            if (name.isEmpty()) { input.setError("请输入穿搭名称"); return; }
+            if (name.isEmpty()) { input.setError(UiLanguage.text(this, "请输入穿搭名称")); return; }
             WardrobeStore.Outfit outfit = new WardrobeStore.Outfit();
             outfit.name = name;
             List<Wheel> selected = visibleWheels();
@@ -629,7 +683,8 @@ public final class MotionOutfitActivity extends Activity implements SensorEventL
                 tick();
             });
             if (items.isEmpty()) {
-                TextView add = button("添加" + label, false, () -> {
+                TextView add = button(UiLanguage.english(MotionOutfitActivity.this)
+                        ? "Add " + UiLanguage.text(MotionOutfitActivity.this, label) : "添加" + label, false, () -> {
                     if (seasonFilter >= 0 || !colorFilter.isEmpty()) { showFilters(); return; }
                     setResult(RESULT_OK, new Intent().putExtra("type", row == 0 ? "外套" : row == 2 ? "长裤" : "上衣"));
                     MotionOutfitActivity.this.finish();
@@ -662,14 +717,23 @@ public final class MotionOutfitActivity extends Activity implements SensorEventL
             album.setAlpha(1f);
             if (emptyButton != null) {
                 emptyButton.setVisibility(items.isEmpty() ? VISIBLE : GONE);
-                emptyButton.setText(seasonFilter >= 0 || !colorFilter.isEmpty() ? "调整筛选" : "添加" + label);
+                emptyButton.setText(seasonFilter >= 0 || !colorFilter.isEmpty() ? "调整筛选"
+                        : UiLanguage.english(MotionOutfitActivity.this)
+                            ? "Add " + UiLanguage.text(MotionOutfitActivity.this, label) : "添加" + label);
             }
             pin.setVisibility(items.isEmpty() ? GONE : VISIBLE);
             pin.filled = locked;
-            pin.setContentDescription((locked ? "解锁" : "锁定") + label);
+            pin.setContentDescription(UiLanguage.english(MotionOutfitActivity.this)
+                    ? (locked ? "Unlock " : "Lock ") + UiLanguage.text(MotionOutfitActivity.this, label)
+                    : (locked ? "解锁" : "锁定") + label);
             pin.setSelected(locked);
             pin.invalidate();
-            setContentDescription(label + (selected() == null ? "为空" : "，" + selected().name) + (active == row ? "，当前激活" : "，点击激活"));
+            setContentDescription(UiLanguage.english(MotionOutfitActivity.this)
+                    ? UiLanguage.text(MotionOutfitActivity.this, label)
+                            + (selected() == null ? ", empty" : ", " + selected().name)
+                            + (active == row ? ", active" : ", tap to activate")
+                    : label + (selected() == null ? "为空" : "，" + selected().name)
+                            + (active == row ? "，当前激活" : "，点击激活"));
             album.invalidate();
             if (stage != null) stage.requestLayout();
         }
@@ -866,16 +930,16 @@ public final class MotionOutfitActivity extends Activity implements SensorEventL
 
     private void tick() { root.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK); }
     private Icon icon(int kind, String label, Runnable action) {
-        Icon view = new Icon(kind); view.setContentDescription(label);
+        Icon view = new Icon(kind); view.setContentDescription(UiLanguage.text(this, label));
         view.setOnClickListener(v -> { tick(); action.run(); });
         return view;
     }
-    private void toast(String message) { Toast.makeText(this, message, Toast.LENGTH_SHORT).show(); }
+    private void toast(String message) { Toast.makeText(this, UiLanguage.text(this, message), Toast.LENGTH_SHORT).show(); }
     private int dp(float value) { return Math.round(value * getResources().getDisplayMetrics().density); }
     private LinearLayout column() { LinearLayout view = new LinearLayout(this); view.setOrientation(LinearLayout.VERTICAL); return view; }
     private LinearLayout row() { LinearLayout view = new LinearLayout(this); view.setGravity(Gravity.CENTER_VERTICAL); return view; }
     private TextView text(String label, int size) {
-        TextView view = new TextView(this); view.setText(label); view.setTextSize(size); view.setTextColor(INK); return view;
+        TextView view = new UiLanguage.Label(this); view.setText(label); view.setTextSize(size); view.setTextColor(INK); return view;
     }
     private TextView button(String label, boolean solid, Runnable action) {
         TextView view = text(label, 14);

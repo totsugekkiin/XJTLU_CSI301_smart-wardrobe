@@ -23,6 +23,7 @@ final class Sheet extends Dialog {
     private final LinearLayout footer;
     private final LinearLayout panel;
     private final LinearLayout heading;
+    private final View headerRule;
     private final ScrollView scroll;
     private final boolean dismissible;
     private ValueAnimator dimAnimator;
@@ -45,13 +46,6 @@ final class Sheet extends Dialog {
         panel.setPadding(ui.dp(20), ui.dp(10), ui.dp(20), ui.dp(14));
         panel.setFocusableInTouchMode(true);
 
-        if (dismissible) {
-            View handle = new View(ui);
-            handle.setBackground(ui.shape(0xffcccccc, 2, 0));
-            LinearLayout.LayoutParams handleParams = new LinearLayout.LayoutParams(ui.dp(32), ui.dp(3));
-            handleParams.gravity = Gravity.CENTER_HORIZONTAL;
-            panel.addView(handle, handleParams);
-        }
         heading = ui.row();
         heading.setGravity(Gravity.CENTER_VERTICAL);
         TextView label = ui.editorial(title, 20);
@@ -67,7 +61,9 @@ final class Sheet extends Dialog {
         }
         panel.addView(heading);
         ui.gap(panel, 10);
-        ui.rule(panel);
+        headerRule = new View(ui);
+        headerRule.setBackgroundColor(MainActivity.STROKE);
+        panel.addView(headerRule, new LinearLayout.LayoutParams(-1, ui.dp(1)));
 
         content = ui.vertical();
         content.setPadding(0, ui.dp(8), 0, ui.dp(8));
@@ -93,6 +89,8 @@ final class Sheet extends Dialog {
         int pixels = ui.dp(padding);
         panel.setPadding(pixels, pixels, pixels, pixels);
     }
+
+    void hideHeaderRule() { headerRule.setVisibility(View.GONE); }
 
     void headerAction(String label, Runnable action) {
         TextView button = ui.ghost(label, action);
@@ -184,6 +182,7 @@ final class Sheet extends Dialog {
         panel.requestFocus();
         panel.post(() -> {
             if (!isShowing() || closing) return;
+            UiLanguage.localizeTree(panel);
             if (!Motion.enabled()) { panel.setTranslationY(0); setDim(.42f); return; }
             panel.setTranslationY(panel.getHeight());
             animateDim(.42f, 240);

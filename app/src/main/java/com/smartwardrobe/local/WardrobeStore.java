@@ -50,7 +50,7 @@ final class WardrobeStore extends SQLiteOpenHelper {
 
     static final class Layer {
         long garment;
-        float x, y, scale;
+        float x, y, scale, rotation;
         Layer(long garment, float x, float y, float scale) {
             this.garment = garment;
             this.x = x;
@@ -75,7 +75,7 @@ final class WardrobeStore extends SQLiteOpenHelper {
     };
 
     WardrobeStore(Context context) {
-        super(context, "wardrobe.sqlite", null, 5);
+        super(context, "wardrobe.sqlite", null, 6);
         photos = new File(context.getFilesDir(), "photos");
     }
 
@@ -93,7 +93,7 @@ final class WardrobeStore extends SQLiteOpenHelper {
                 + "day TEXT, note TEXT, wash_checkpoint INTEGER)");
         db.execSQL("CREATE TABLE outfit(id INTEGER PRIMARY KEY, name TEXT NOT NULL, scene TEXT)");
         db.execSQL("CREATE TABLE outfit_layer(outfit INTEGER REFERENCES outfit(id) ON DELETE CASCADE, position INTEGER, "
-                + "garment INTEGER REFERENCES garment(id) ON DELETE CASCADE, x REAL, y REAL, scale REAL, PRIMARY KEY(outfit,position))");
+                + "garment INTEGER REFERENCES garment(id) ON DELETE CASCADE, x REAL, y REAL, scale REAL, rotation REAL NOT NULL DEFAULT 0, PRIMARY KEY(outfit,position))");
         db.execSQL("CREATE TABLE history(id INTEGER PRIMARY KEY, outfit INTEGER REFERENCES outfit(id) ON DELETE SET NULL, "
                 + "name TEXT, scene TEXT, day TEXT, UNIQUE(outfit,day))");
         db.execSQL("CREATE TABLE history_garment(history INTEGER REFERENCES history(id) ON DELETE CASCADE, "
@@ -123,6 +123,7 @@ final class WardrobeStore extends SQLiteOpenHelper {
             db.execSQL("UPDATE garment SET processed=photo WHERE photo<>original");
         }
         if (from < 5) db.execSQL("CREATE TABLE file_cleanup(name TEXT PRIMARY KEY)");
+        if (from < 6) db.execSQL("ALTER TABLE outfit_layer ADD COLUMN rotation REAL NOT NULL DEFAULT 0");
     }
 
     @Override public void onOpen(SQLiteDatabase db) {
@@ -649,9 +650,12 @@ final class WardrobeStore extends SQLiteOpenHelper {
                 outfit.name = c.getString(1);
                 outfit.scene = c.getString(2);
                 try (Cursor layers = getReadableDatabase().rawQuery(
-                        "SELECT garment,x,y,scale FROM outfit_layer WHERE outfit=? ORDER BY position", arg(outfit.id))) {
-                    while (layers.moveToNext()) outfit.layers.add(new Layer(layers.getLong(0),
-                            layers.getFloat(1), layers.getFloat(2), layers.getFloat(3)));
+                        "SELECT garment,x,y,scale,rotation FROM outfit_layer WHERE outfit=? ORDER BY position", arg(outfit.id))) {
+                    while (layers.moveToNext()) {
+                        Layer layer = new Layer(layers.getLong(0), layers.getFloat(1), layers.getFloat(2), layers.getFloat(3));
+                        layer.rotation = layers.getFloat(4);
+                        outfit.layers.add(layer);
+                    }
                 }
                 list.add(outfit);
             }
@@ -680,6 +684,7 @@ final class WardrobeStore extends SQLiteOpenHelper {
                 l.put("x", layer.x);
                 l.put("y", layer.y);
                 l.put("scale", layer.scale);
+                l.put("rotation", layer.rotation);
                 db.insertOrThrow("outfit_layer", null, l);
             }
             db.setTransactionSuccessful();
@@ -704,8 +709,10 @@ final class WardrobeStore extends SQLiteOpenHelper {
                     org.json.JSONArray layers = new org.json.JSONArray(c.getString(5));
                     for (int i = 0; i < layers.length(); i++) {
                         org.json.JSONArray layer = layers.getJSONArray(i);
-                        outfit.layers.add(new Layer(layer.getLong(0), (float) layer.getDouble(1),
-                                (float) layer.getDouble(2), (float) layer.getDouble(3)));
+                        Layer restored = new Layer(layer.getLong(0), (float) layer.getDouble(1),
+                                (float) layer.getDouble(2), (float) layer.getDouble(3));
+                        if (layer.length() > 4) restored.rotation = (float) layer.getDouble(4);
+                        outfit.layers.add(restored);
                     }
                 } catch (org.json.JSONException invalid) {
                     android.util.Log.w("SmartWardrobe", "Unable to load draft " + c.getLong(0), invalid);
@@ -721,7 +728,7 @@ final class WardrobeStore extends SQLiteOpenHelper {
     long saveDraft(long id, Outfit outfit, LocalDate day, boolean markDirty) {
         org.json.JSONArray layers = new org.json.JSONArray();
         for (Layer layer : outfit.layers) {
-            layers.put(new org.json.JSONArray(java.util.Arrays.asList(layer.garment, layer.x, layer.y, layer.scale)));
+            layers.put(new org.json.JSONArray(java.util.Arrays.asList(layer.garment, layer.x, layer.y, layer.scale, layer.rotation)));
         }
         ContentValues values = new ContentValues();
         if (outfit.id != 0) values.put("outfit", outfit.id);

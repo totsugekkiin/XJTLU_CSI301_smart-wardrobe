@@ -24,7 +24,10 @@ final class CalendarGrid {
                          LocalDate maximum, Predicate<LocalDate> recorded, Consumer<LocalDate> pick) {
         grid.removeAllViews();
         LinearLayout weekdays = ui.row();
-        for (String day : new String[]{"一", "二", "三", "四", "五", "六", "日"}) {
+        String[] dayNames = UiLanguage.english(ui)
+                ? new String[]{"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"}
+                : new String[]{"一", "二", "三", "四", "五", "六", "日"};
+        for (String day : dayNames) {
             TextView label = ui.text(day, 12, MainActivity.MUTED, true);
             label.setGravity(Gravity.CENTER);
             weekdays.addView(label, new LinearLayout.LayoutParams(0, ui.dp(30), 1));
@@ -57,7 +60,7 @@ final class CalendarGrid {
                     cell.setCompoundDrawables(null, null, null, dot);
                 }
                 cell.setMinHeight(0);
-                cell.setContentDescription(date + (hasRecord ? " 有穿着记录" : ""));
+                cell.setContentDescription(date + (hasRecord ? UiLanguage.text(ui, " 有穿着记录") : ""));
                 cell.setSelected(date.equals(selected));
                 cell.setEnabled(!disabled);
                 week.addView(cell, p);

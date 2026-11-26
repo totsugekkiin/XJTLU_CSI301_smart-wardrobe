@@ -285,6 +285,28 @@ public final class MainActivity extends ComponentActivity {
         return action;
     }
 
+    LinearLayout editorSurface() {
+        LinearLayout header = (LinearLayout) root.getChildAt(0);
+        LinearLayout top = (LinearLayout) header.getChildAt(0);
+        top.removeViewAt(0);
+        FrameLayout iconBack = new FrameLayout(this);
+        iconBack.addView(new NavIcon(this, NavIcon.BACK, false, INK),
+                new FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER));
+        iconBack.setContentDescription("返回");
+        click(iconBack, Color.TRANSPARENT, 0, 0, () -> { if (back != null) back.run(); });
+        top.addView(iconBack, 0, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        header.setPadding(dp(12), dp(2), dp(16), dp(2));
+        TextView action = (TextView) top.getChildAt(top.getChildCount() - 1);
+        action.setMinHeight(dp(40));
+        action.setPadding(dp(15), 0, dp(15), 0);
+        action.setTextSize(14);
+        root.removeViewAt(2);
+        LinearLayout surface = vertical();
+        surface.setBackgroundColor(Color.WHITE);
+        root.addView(surface, 2, new LinearLayout.LayoutParams(-1, 0, 1));
+        return surface;
+    }
+
     void openTab(int index) {
         if (index == 2) index = 1;
         if (index != 0) closet.clearSelection();
@@ -456,6 +478,8 @@ public final class MainActivity extends ComponentActivity {
         return false;
     }
 
+    View rootView() { return root; }
+
     void page(Object key, String title, String subtitle, Runnable goBack, String action, Runnable onAction) {
         if (onboarding != null) onboarding.pageChanging();
         boolean tabChanged = goBack == null && navigationStrip != null && renderedTab != tab;
@@ -493,6 +517,10 @@ public final class MainActivity extends ComponentActivity {
         };
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(PAPER);
+        root.getViewTreeObserver().addOnPreDrawListener(() -> {
+            UiLanguage.localizeTree(root);
+            return true;
+        });
 
         LinearLayout header = vertical();
         header.setPadding(dp(20), dp(6), dp(20), dp(6));
@@ -575,7 +603,7 @@ public final class MainActivity extends ComponentActivity {
                 item.addView(label, new LinearLayout.LayoutParams(-2, -2));
                 gap(item, 7);
                 item.setSelected(active);
-                item.setContentDescription(names[i]);
+                item.setContentDescription(UiLanguage.text(this, names[i]));
                 label.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
                 click(item, PAPER, 0, 0, () -> { if (index != tab) openTab(index); });
                 nav.addView(item, new LinearLayout.LayoutParams(0, dp(61), 1));
@@ -636,8 +664,18 @@ public final class MainActivity extends ComponentActivity {
     }
 
     TextView text(String label, float size, int color, boolean bold) {
-        TextView v = new TextView(this);
-        v.setText(cleanText(label));
+        return makeText(label, size, color, bold, true);
+    }
+
+    TextView userText(String value, float size, int color, boolean bold) {
+        return makeText(value, size, color, bold, false);
+    }
+
+    private TextView makeText(String label, float size, int color, boolean bold, boolean localizable) {
+        UiLanguage.Label v = new UiLanguage.Label(this);
+        v.setLocalizable(localizable);
+        v.setText(localizable && UiLanguage.english(this)
+                ? UiLanguage.text(this, label) : cleanText(label));
         v.setTextSize(size);
         v.setFontFeatureSettings("tnum");
         v.setTextColor(color);
@@ -702,7 +740,7 @@ public final class MainActivity extends ComponentActivity {
     private TextView actionButton(String label, int size, int color, boolean filled) {
         Button v = new Button(this, null, 0);
         v.setAllCaps(false);
-        v.setText(cleanText(label));
+        v.setText(UiLanguage.english(this) ? UiLanguage.text(this, label) : cleanText(label));
         v.setTextSize(size);
         v.setFontFeatureSettings("tnum");
         v.setTypeface(null, Typeface.BOLD);
@@ -828,7 +866,7 @@ public final class MainActivity extends ComponentActivity {
         field.setFontFeatureSettings("tnum");
         field.setTextColor(INK);
         field.setHintTextColor(MUTED);
-        field.setContentDescription(label);
+        field.setContentDescription(UiLanguage.text(this, label));
         field.setSingleLine(!multiline);
         field.setInputType(numeric ? InputType.TYPE_CLASS_NUMBER : InputType.TYPE_CLASS_TEXT
                 | (multiline ? InputType.TYPE_TEXT_FLAG_MULTI_LINE : InputType.TYPE_TEXT_FLAG_CAP_SENTENCES));
@@ -947,7 +985,7 @@ public final class MainActivity extends ComponentActivity {
         FrameLayout.LayoutParams p = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
         p.setMargins(dp(20), 0, dp(20), dp(76));
         owner.addView(notice, p);
-        notice.announceForAccessibility(message + "，可撤销");
+        notice.announceForAccessibility(UiLanguage.text(this, message + "，可撤销"));
         android.view.accessibility.AccessibilityManager accessibility =
                 (android.view.accessibility.AccessibilityManager) getSystemService(ACCESSIBILITY_SERVICE);
         int timeout = 7000;
@@ -970,7 +1008,7 @@ public final class MainActivity extends ComponentActivity {
         FrameLayout.LayoutParams p = new FrameLayout.LayoutParams(-2, -2, edge | Gravity.CENTER_HORIZONTAL);
         p.setMargins(dp(20), bottom ? 0 : dp(12), dp(20), bottom ? dp(76) : 0);
         owner.addView(notice, p);
-        notice.announceForAccessibility(message);
+        notice.announceForAccessibility(UiLanguage.text(this, message));
         notice.postDelayed(() -> owner.removeView(notice), 2300);
     }
 

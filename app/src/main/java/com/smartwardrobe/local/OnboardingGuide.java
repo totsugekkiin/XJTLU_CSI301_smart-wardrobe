@@ -272,7 +272,7 @@ final class OnboardingGuide implements AutoCloseable {
             setWillNotDraw(false);
             setClickable(true);
             setFocusableInTouchMode(true);
-            setContentDescription("使用指南");
+            setContentDescription(UiLanguage.text(ui, "使用指南"));
             setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_YES);
             setClipChildren(false);
         }
@@ -287,7 +287,9 @@ final class OnboardingGuide implements AutoCloseable {
             GradientDrawable background = ui.shape(MainActivity.PAPER, 4, 0);
             background.setStroke(1, MainActivity.INK);
             card.setBackground(background);
-            card.setAccessibilityPaneTitle("使用指南 / " + (step + 1) + " / 6");
+            card.setAccessibilityPaneTitle(UiLanguage.english(ui)
+                    ? "How It Works · " + (step + 1) + " of 6"
+                    : "使用指南 / " + (step + 1) + " / 6");
             LinearLayout top = ui.row();
             top.setGravity(Gravity.CENTER_VERTICAL);
             TextView number = ui.text(String.format(Locale.ROOT, "%02d / 06", step + 1), 12, 0xff888888, false);
@@ -329,7 +331,7 @@ final class OnboardingGuide implements AutoCloseable {
             face.setBackground(ui.shape(MainActivity.INK, 4, 0));
             face.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
             next.addView(face, new LayoutParams(-1, ui.dp(36), Gravity.CENTER_VERTICAL));
-            next.setContentDescription(label);
+            next.setContentDescription(UiLanguage.text(ui, label));
             next.setAccessibilityDelegate(new AccessibilityDelegate() {
                 @Override public void onInitializeAccessibilityNodeInfo(View host, AccessibilityNodeInfo info) {
                     super.onInitializeAccessibilityNodeInfo(host, info);

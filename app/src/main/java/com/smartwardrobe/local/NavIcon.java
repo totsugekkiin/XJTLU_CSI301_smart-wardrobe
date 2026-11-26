@@ -15,6 +15,7 @@ final class NavIcon extends View {
     static final int SHOPPING = 9;
     static final int EDIT = 10;
     static final int BACK = 11, MORE = 12, COMPARE = 13, ADJUST = 14, CLOSE = 15, PLUS = 16, TICK = 17;
+    static final int LAYER_UP = 18, LAYER_DOWN = 19, REPLACE = 20;
     private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path path = new Path();
     private final int icon;
@@ -59,6 +60,9 @@ final class NavIcon extends View {
             }
             case CLOSE -> { line(canvas, 6, 6, 18, 18); line(canvas, 18, 6, 6, 18); }
             case PLUS -> { line(canvas, 5, 12, 19, 12); line(canvas, 12, 5, 12, 19); }
+            case LAYER_UP -> { line(canvas, 4, 16, 12, 10, 20, 16); line(canvas, 4, 21, 12, 15, 20, 21); line(canvas, 4, 11, 12, 5, 20, 11); }
+            case LAYER_DOWN -> { line(canvas, 4, 3, 12, 9, 20, 3); line(canvas, 4, 8, 12, 14, 20, 8); line(canvas, 4, 13, 12, 19, 20, 13); }
+            case REPLACE -> { line(canvas, 5, 8, 19, 8, 16, 5); line(canvas, 19, 8, 16, 11); line(canvas, 19, 16, 5, 16, 8, 13); line(canvas, 5, 16, 8, 19); }
             case TICK -> line(canvas, 4, 12, 9, 17, 20, 6);
             case CAMERA -> {
                 line(canvas, 3, 6, 7, 6, 9, 3, 15, 3, 17, 6, 21, 6, 21, 20, 3, 20, 3, 6);

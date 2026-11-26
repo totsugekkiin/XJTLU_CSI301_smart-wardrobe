@@ -195,7 +195,8 @@ final class ClosetScreens {
             showAddOptions(panel, () -> {});
             return;
         }
-        countView = ui.closetPage(selecting ? "已选 " + selected.size() + " 件" : countText(garments, filterGarments(garments)),
+        countView = ui.closetPage(selecting ? (UiLanguage.english(ui) ? selected.size() + " selected"
+                        : "已选 " + selected.size() + " 件") : countText(garments, filterGarments(garments)),
                 selecting ? null : this::newGarment, selecting ? null : filterBar());
         refreshList(false);
     }
@@ -222,6 +223,9 @@ final class ClosetScreens {
 
     private String countText(List<WardrobeStore.Garment> all, List<WardrobeStore.Garment> shown) {
         boolean narrowing = !filter.equals(GarmentPicker.Filter.ALL) || filterSeason >= 0 || favorites;
+        if (UiLanguage.english(ui)) return narrowing
+                ? shown.size() + " of " + all.size() + " items"
+                : all.size() + (all.size() == 1 ? " item" : " items");
         return narrowing ? shown.size() + " / " + all.size() + " 件" : all.size() + " 件单品";
     }
 
@@ -337,7 +341,8 @@ final class ClosetScreens {
                 if (!all) for (var garment : filtered) selected.add(garment.id);
                 home();
             }));
-            tools.addView(ui.text("当前列表 " + filtered.size() + " 件", 12, MUTED, false));
+            tools.addView(ui.text(UiLanguage.english(ui) ? filtered.size() + " items in this view"
+                    : "当前列表 " + filtered.size() + " 件", 12, MUTED, false));
             ui.body.addView(tools);
             ui.gap(ui.body, 12);
 
@@ -412,12 +417,12 @@ final class ClosetScreens {
                 card.addView(photo, new LinearLayout.LayoutParams(-1, ui.dp(height)));
                 ui.gap(card, 6);
                 if (!g.brand.isEmpty()) {
-                    TextView brand = ui.text(g.brand, 11, MUTED, false);
+                    TextView brand = ui.userText(g.brand, 11, MUTED, false);
                     brand.setLetterSpacing(.07f);
                     brand.setSingleLine();
                     card.addView(brand);
                 }
-                TextView title = ui.text(g.name, 13, INK, true);
+                TextView title = ui.userText(g.name, 13, INK, true);
                 title.setSingleLine();
                 title.setEllipsize(android.text.TextUtils.TruncateAt.END);
                 card.addView(title);
@@ -507,9 +512,12 @@ final class ClosetScreens {
     }
 
     void confirmBatchImport(List<Uri> images) {
-        ui.prompt("批量导入 " + images.size() + " 张照片",
+        ui.prompt(UiLanguage.english(ui) ? "Import " + images.size() + " photos"
+                        : "批量导入 " + images.size() + " 张照片",
                 "每张照片添加一件单品。未识别时保留原图，可稍后编辑。",
-                "开始导入", () -> ui.task("导入中  " + images.size() + " 张照片…",
+                "开始导入", () -> ui.task(UiLanguage.english(ui)
+                                ? "Importing " + images.size() + " photos…"
+                                : "导入中  " + images.size() + " 张照片…",
                         () -> importBatch(images), message -> {
                             home();
                             Sheet summary = new Sheet(ui, "导入结果", true);
@@ -548,9 +556,16 @@ final class ClosetScreens {
                 if (original != null) original.recycle();
             }
         }
-        String message = "已导入 " + (images.size() - failed.size()) + " / " + images.size() + " 张";
-        if (originalCount > 0) message += " / " + originalCount + " 张保留原图";
-        if (!failed.isEmpty()) message += "\n未导入：" + String.join("、", failed);
+        boolean english = UiLanguage.english(ui);
+        String message = english
+                ? "Imported " + (images.size() - failed.size()) + " of " + images.size() + " photos"
+                : "已导入 " + (images.size() - failed.size()) + " / " + images.size() + " 张";
+        if (originalCount > 0) message += english
+                ? " · " + originalCount + " original photos kept"
+                : " / " + originalCount + " 张保留原图";
+        if (!failed.isEmpty()) message += english
+                ? "\nCould not import: " + String.join(", ", failed)
+                : "\n未导入：" + String.join("、", failed);
         return message;
     }
 
@@ -649,8 +664,11 @@ final class ClosetScreens {
             return;
         }
         Sheet sheet = new Sheet(ui, "删除衣物", true);
-        sheet.description("关联 " + links.outfits() + " 套穿搭 / " + links.histories()
-                + " 次穿着记录。\n删除将移除关联单品及变空的穿搭与记录。衣物及照片无法恢复。");
+        sheet.description(UiLanguage.english(ui)
+                ? "Linked to " + links.outfits() + " outfits and " + links.histories()
+                        + " wear records.\nDeleting this item will remove it from those outfits and records. Empty outfits and records will also be removed. The item and its photos cannot be restored."
+                : "关联 " + links.outfits() + " 套穿搭 / " + links.histories()
+                        + " 次穿着记录。\n删除将移除关联单品及变空的穿搭与记录。衣物及照片无法恢复。");
         sheet.content.addView(ui.pill("归档并保留历史", true, () -> {
             sheet.dismiss();
             db.archiveGarment(garment.id, true);
@@ -666,21 +684,25 @@ final class ClosetScreens {
         if (ids.isEmpty()) return;
         int count = db.markDirty(ids);
         exitSelection();
-        ui.bottomNotice("已将 " + count + " 件衣物标为待洗");
+        ui.bottomNotice(UiLanguage.english(ui) ? count + " items marked for washing"
+                : "已将 " + count + " 件衣物标为待洗");
     }
 
     private void archiveSelected(Set<Long> ids) {
         if (ids.isEmpty()) return;
         db.archiveGarments(ids);
         exitSelection();
-        ui.bottomNotice("已归档 " + ids.size() + " 件 / 历史已保留");
+        ui.bottomNotice(UiLanguage.english(ui) ? ids.size() + " items archived · History kept"
+                : "已归档 " + ids.size() + " 件 / 历史已保留");
     }
 
     private void deleteSelected(Set<Long> ids) {
         if (ids.isEmpty()) return;
         long linked = ids.stream().filter(id -> db.associations(id).any()).count();
-        String message = "删除 " + ids.size() + " 件衣物 / " + linked
-                + " 件有关联记录。\n关联单品及变空的穿搭与记录将被移除，衣物及照片无法恢复。";
+        String message = UiLanguage.english(ui)
+                ? "Delete " + ids.size() + " items? " + linked + " have linked records.\nLinked items and empty outfits or records will also be removed. Items and photos cannot be restored."
+                : "删除 " + ids.size() + " 件衣物 / " + linked
+                        + " 件有关联记录。\n关联单品及变空的穿搭与记录将被移除，衣物及照片无法恢复。";
         ui.confirmDestructive("删除所选衣物", message, "彻底删除", () -> removeGarments(ids, this::exitSelection));
     }
 
@@ -688,7 +710,8 @@ final class ClosetScreens {
         ui.task("删除中…", () -> db.deleteGarments(ids), count -> {
             ui.outfits.garmentsDeleted(ids);
             back.run();
-            ui.bottomNotice("已删除 " + count + " 件衣物");
+            ui.bottomNotice(UiLanguage.english(ui) ? count + " items deleted"
+                    : "已删除 " + count + " 件衣物");
         });
     }
 
@@ -872,7 +895,10 @@ final class ClosetScreens {
         String temperature = advice.weatherBased() ? String.format(Locale.ROOT, "气温降至 %.0f°C  ", advice.averageHigh()) : "";
         LinearLayout heading = ui.row();
         heading.setGravity(Gravity.CENTER_VERTICAL);
-        TextView weatherHeading = ui.text(temperature + SEASONS[season] + "季衣橱待唤醒：", 14, INK, true);
+        TextView weatherHeading = ui.text(UiLanguage.english(ui)
+                ? UiLanguage.text(ui, SEASONS[season]) + " Wardrobe Refresh"
+                        + (advice.weatherBased() ? String.format(Locale.ENGLISH, " / %.0f°C", advice.averageHigh()) : "")
+                : temperature + SEASONS[season] + "季衣橱待唤醒：", 14, INK, true);
         weatherHeading.setSingleLine(true);
         weatherHeading.setEllipsize(android.text.TextUtils.TruncateAt.END);
         heading.addView(weatherHeading, new LinearLayout.LayoutParams(0, -2, 1));
@@ -884,7 +910,9 @@ final class ClosetScreens {
         card.addView(heading);
         LinearLayout row = ui.row();
         row.setGravity(Gravity.CENTER_VERTICAL);
-        String message = wake + " 件久置待唤醒，建议整理";
+        String message = UiLanguage.english(ui)
+                ? wake + (wake == 1 ? " item" : " items") + " stored away for a while. Review them now."
+                : wake + " 件久置待唤醒，建议整理";
         row.addView(ui.text(message, 14, INK, false), new LinearLayout.LayoutParams(0, -2, 1));
         ui.space(row, 10);
         row.addView(ui.pill("去整理", true, this::openSeasonal));
@@ -895,7 +923,9 @@ final class ClosetScreens {
         LinearLayout heading = ui.row();
         heading.addView(ui.text(title, 12, INK, true), new LinearLayout.LayoutParams(0, -2, 1));
         int percent = total == 0 ? 0 : count * 100 / total;
-        heading.addView(ui.text(count + " / " + total + " 件 / " + percent + "%", 12, MUTED, false));
+        heading.addView(ui.text(UiLanguage.english(ui)
+                ? count + " of " + total + " items (" + percent + "%)"
+                : count + " / " + total + " 件 / " + percent + "%", 12, MUTED, false));
         parent.addView(heading);
         ui.gap(parent, 6);
         View bar = new View(ui) {
@@ -932,7 +962,7 @@ final class ClosetScreens {
         item.addView(thumb, new LinearLayout.LayoutParams(ui.dp(48), ui.dp(63)));
         ui.space(item, 10);
         LinearLayout text = ui.vertical();
-        TextView name = ui.text(g.name, 14, INK, true);
+        TextView name = ui.userText(g.name, 14, INK, true);
         name.setMaxLines(2);
         text.addView(name);
         text.addView(ui.text(subtitle, 11, MUTED, false));
@@ -1005,10 +1035,19 @@ final class ClosetScreens {
             String fabric = g.fabric.toLowerCase(Locale.ROOT);
             String checks = fabric.matches("(?s).*(毛|wool|cashmere).*") ? "起球和变形"
                     : fabric.matches("(?s).*(棉|cotton|牛仔).*") ? "褪色和变形" : "起球、变形或褪色";
-            lines.add("已洗涤 " + stats.sinceCare() + " 次 / 检查" + checks + "。");
-            if (!g.care.isEmpty() || !g.symbols.isEmpty()) lines.add("请按洗标护理");
+            if (UiLanguage.english(ui)) {
+                String issue = fabric.matches("(?s).*(毛|wool|cashmere).*") ? "pilling and stretching"
+                        : fabric.matches("(?s).*(棉|cotton|牛仔).*") ? "fading and stretching"
+                        : "pilling, fading, or stretching";
+                lines.add(stats.sinceCare() + (stats.sinceCare() == 1 ? " wash" : " washes")
+                        + " since last care check. Check for " + issue + ".");
+            } else lines.add("已洗涤 " + stats.sinceCare() + " 次 / 检查" + checks + "。");
+            if (!g.care.isEmpty() || !g.symbols.isEmpty())
+                lines.add(UiLanguage.english(ui) ? "Follow the care label" : "请按洗标护理");
         }
-        if (g.idleDays > 0 && days >= g.idleDays) lines.add("已 " + days + " 天未使用 / 检查通风与除尘");
+        if (g.idleDays > 0 && days >= g.idleDays) lines.add(UiLanguage.english(ui)
+                ? "Not worn for " + days + " days. Check for dust and air it out."
+                : "已 " + days + " 天未使用 / 检查通风与除尘");
         return String.join("\n", lines);
     }
 
@@ -1099,11 +1138,17 @@ final class ClosetScreens {
         int effective = ui.weather.effectiveSeason(advice);
         String label;
         if (manual >= 0) {
-            label = "当前手动季节：" + SEASONS[manual] + "季";
+            label = UiLanguage.english(ui) ? "Season set to " + UiLanguage.text(ui, SEASONS[manual])
+                    : "当前手动季节：" + SEASONS[manual] + "季";
         } else {
-            label = advice.weatherBased()
-                    ? String.format(Locale.ROOT, "未来3天平均最高温 %.0f°C  建议%s季", advice.averageHigh(), SEASONS[advice.season()])
-                    : "按当前月份推荐" + SEASONS[advice.season()] + "季";
+            label = UiLanguage.english(ui)
+                    ? (advice.weatherBased()
+                        ? String.format(Locale.ENGLISH, "Next 3 days: %.0f°C average high · %s suggested",
+                                advice.averageHigh(), UiLanguage.text(ui, SEASONS[advice.season()]))
+                        : UiLanguage.text(ui, SEASONS[advice.season()]) + " suggested for this month")
+                    : (advice.weatherBased()
+                        ? String.format(Locale.ROOT, "未来3天平均最高温 %.0f°C  建议%s季", advice.averageHigh(), SEASONS[advice.season()])
+                        : "按当前月份推荐" + SEASONS[advice.season()] + "季");
         }
         TextView status = ui.text(label, 13, INK, false);
         status.setSingleLine(true);
@@ -1182,7 +1227,8 @@ final class ClosetScreens {
         seasonSummary(seasonContent, SEASONS[currentSeason] + "季", total, ready.size(), dirty, wake);
         if (total == 0) careEmpty(seasonContent, SEASONS[currentSeason] + "季暂无适用衣物");
         if (!dirty.isEmpty()) {
-            ui.section(seasonContent, "待洗  " + dirty.size());
+            ui.section(seasonContent, UiLanguage.english(ui)
+                    ? "Needs Washing  " + dirty.size() : "待洗  " + dirty.size());
             for (WardrobeStore.Garment g : dirty) {
                 LinearLayout wrap = newSeasonRow(g);
                 careRow(wrap, g, g.type,
@@ -1192,7 +1238,8 @@ final class ClosetScreens {
             }
         }
         if (!wake.isEmpty()) {
-            ui.section(seasonContent, "待唤醒  " + wake.size());
+            ui.section(seasonContent, UiLanguage.english(ui)
+                    ? "Needs a Refresh  " + wake.size() : "待唤醒  " + wake.size());
             for (WardrobeStore.Garment g : wake) {
                 LinearLayout wrap = newSeasonRow(g);
                 careRow(wrap, g, "久置 " + inactiveOf(cache, g) + " 天",
@@ -1201,7 +1248,8 @@ final class ClosetScreens {
             }
         }
         if (!care.isEmpty()) {
-            ui.section(seasonContent, "需护理  " + care.size());
+            ui.section(seasonContent, UiLanguage.english(ui)
+                    ? "Needs Care  " + care.size() : "需护理  " + care.size());
             for (WardrobeStore.Garment g : care) {
                 LinearLayout wrap = newSeasonRow(g);
                 careRow(wrap, g, g.type,
@@ -1211,7 +1259,8 @@ final class ClosetScreens {
             }
         }
         if (!ready.isEmpty()) {
-            ui.section(seasonContent, "洁净就绪  " + ready.size());
+            ui.section(seasonContent, UiLanguage.english(ui)
+                    ? "Clean and Ready  " + ready.size() : "洁净就绪  " + ready.size());
             for (WardrobeStore.Garment g : ready) {
                 LinearLayout wrap = newSeasonRow(g);
                 careRow(wrap, g, g.type, adjustingSeasons ? seasonTags(g) : null, this::season);
@@ -1433,9 +1482,13 @@ final class ClosetScreens {
                                List<WardrobeStore.Garment> dirty, List<WardrobeStore.Garment> wake) {
         int pending = dirty.size(), waking = wake.size();
         LinearLayout status = careCard(parent);
-        status.addView(ui.text(season + "衣橱 / " + total + " 件", 12, MUTED, false));
+        status.addView(ui.text(UiLanguage.english(ui)
+                ? UiLanguage.text(ui, season) + " Wardrobe / " + total + (total == 1 ? " item" : " items")
+                : season + "衣橱 / " + total + " 件", 12, MUTED, false));
         int percent = total == 0 ? 0 : Math.round(100f * ready / total);
-        status.addView(ui.text("可直接穿 " + ready + " / " + total + " 件 / " + percent + "%", 15, INK, true));
+        status.addView(ui.text(UiLanguage.english(ui)
+                ? ready + " of " + total + " ready to wear (" + percent + "%)"
+                : "可直接穿 " + ready + " / " + total + " 件 / " + percent + "%", 15, INK, true));
         if (total == 0) return;
         ui.gap(status, 10);
         // Readiness partitions the bar; dirty and waking are independent counts below it.
@@ -1459,7 +1512,9 @@ final class ClosetScreens {
         String[] names = {"可直接穿", "待洗", "待唤醒"};
         int[] totals = {ready, pending, waking};
         for (int i = 0; i < names.length; i++) {
-            TextView count = ui.text(names[i] + "\n" + totals[i] + " 件", 12, INK, true);
+            TextView count = ui.text(UiLanguage.english(ui)
+                    ? UiLanguage.text(ui, names[i]) + "\n" + totals[i] + (totals[i] == 1 ? " item" : " items")
+                    : names[i] + "\n" + totals[i] + " 件", 12, INK, true);
             android.graphics.drawable.GradientDrawable outlineCount = ui.shape(PAPER, 0, 0);
             outlineCount.setStroke(1, INK);
             count.setBackground(outlineCount);
@@ -1489,7 +1544,7 @@ final class ClosetScreens {
         if (g.photo.isEmpty()) thumb.setContentDescription("暂无衣物照片");
         ui.space(row, 10);
         LinearLayout text = ui.vertical();
-        text.addView(ui.text(g.name, 16, INK, true));
+        text.addView(ui.userText(g.name, 16, INK, true));
         text.addView(ui.text(desc, 13, MUTED, false));
         row.addView(text, new LinearLayout.LayoutParams(0, -2, 1));
         if (click != null) {
@@ -1831,7 +1886,7 @@ final class ClosetScreens {
 
         private void updateSave() {
             if (saveButton == null) return;
-            saveButton.setText(g.id == 0 ? "完成添加" : "保存");
+            saveButton.setText(UiLanguage.text(ui, g.id == 0 ? "完成添加" : "保存"));
             saveButton.setTextColor(Color.WHITE);
             saveButton.setEnabled(true);
             saveButton.setVisibility(changed() ? View.VISIBLE : View.GONE);
@@ -1939,8 +1994,13 @@ final class ClosetScreens {
                 any = true;
                 LinearLayout item = ui.vertical();
                 item.setPadding(0, ui.dp(14), 0, ui.dp(14));
-                item.addView(ui.text(outfit.name, 15, INK, true));
-                item.addView(ui.text((outfit.scene.isEmpty() ? "" : outfit.scene + " / ") + outfit.layers.size() + " 件单品", 12, 0xff888888, false));
+                item.addView(ui.userText(outfit.name, 15, INK, true));
+                int pieces = outfit.layers.size();
+                item.addView(ui.text(UiLanguage.english(ui)
+                        ? (outfit.scene.isEmpty() ? "" : UiLanguage.text(ui, outfit.scene) + " / ")
+                                + pieces + (pieces == 1 ? " item" : " items")
+                        : (outfit.scene.isEmpty() ? "" : outfit.scene + " / ") + pieces + " 件单品",
+                        12, 0xff888888, false));
                 records.addView(item);
                 hairline(records);
             }
@@ -2098,7 +2158,16 @@ final class ClosetScreens {
             // The separator belongs to the same conditional row.
             View nextLine = panels[1].getChildAt(panels[1].indexOfChild(labelTextRow) + 1);
             nextLine.setVisibility(g.labelText.isEmpty() ? View.GONE : View.VISIBLE);
-            reminderButton.setText(g.washEvery == 0 && g.idleDays == 0 ? "已关闭"
+            if (UiLanguage.english(ui)) {
+                StringBuilder interval = new StringBuilder();
+                if (g.washEvery > 0) interval.append("After ").append(g.washEvery)
+                        .append(g.washEvery == 1 ? " wash" : " washes");
+                if (g.idleDays > 0) {
+                    if (interval.length() > 0) interval.append(" or ");
+                    interval.append(g.idleDays).append(" days without wear");
+                }
+                reminderButton.setText(interval.length() == 0 ? "Off" : interval.toString());
+            } else reminderButton.setText(g.washEvery == 0 && g.idleDays == 0 ? "已关闭"
                     : "每 " + g.washEvery + " 次 / " + g.idleDays + " 天");
             for (int i = 0; i < careIcons.length; i++) {
                 careIcons[i].meaning(careMeaning(i));

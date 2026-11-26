@@ -1,0 +1,609 @@
+衣橱	Wardrobe
+洗护	Care
+穿搭	Outfits
+日历	Calendar
+回到今天	Today
+体感搭配	Motion Styling
+新建穿搭	New Outfit
+我的穿搭	My Outfits
+穿着日历	Wear Calendar
+单品	Item
+衣橱单品	Wardrobe Items
+全部单品	All Items
+全部类别	All Categories
+全部颜色	All Colors
+全部场景	All Occasions
+全部	All
+圆盘色盘	Color Wheel
+衣橱色盘	Wardrobe Palette
+衣橱颜色	Wardrobe Colors
+衣橱洁净度	Wardrobe Care
+智能洗护	Smart Care
+洗护符号	Care Symbols
+护理检查	Care Check
+护理提醒	Care Reminder
+护理记录	Care History
+扫描洗标	Scan Care Label
+核对洗标	Review Care Label
+洗标原文	Care Label Text
+未标注洗标	No care label added
+洗涤	Washing
+洗涤历史	Wash History
+洗涤间隔	Wash Interval
+闲置间隔	Time Since Last Worn
+待洗	Needs Washing
+暂无待洗	Nothing needs washing
+需护理	Needs Care
+洁净就绪	Clean and Ready
+可直接穿	Ready to Wear
+可穿	Ready to Wear
+直接穿	Wear Now
+送洗	Mark for Washing
+标为待洗	Mark as Needs Washing
+标为洁净	Mark as Clean
+同时标为待洗	Also mark items for washing
+同时保存为穿搭	Also save as an outfit
+记录穿着 / 	Log Wear /{space}
+记录每日上身造型，自动统计每件单品的穿着频率。	Log what you wear each day and track how often you wear each item.
+记到日历	Add to Calendar
+登记当天穿着	Log Today's Outfit
++ 登记当天穿着	+ Log Today's Outfit
++ 记一套	+ Log an Outfit
++ 补记	+ Add Past Wear
+这天还没有穿搭记录	No outfit logged for this day
+穿着日期	Date Worn
+当天穿着	Today's Outfit
+移除穿着记录	Remove Wear Record
+移除后将更新穿着次数。	This will update the wear count.
+移除记录	Remove Record
+暂无记录	No Records Yet
+保存记录	Save Record
+已保存穿搭和当天记录	Outfit and today's wear saved
+已保存穿搭	Outfit saved
+已保存	Saved
+保存	Save
+保存穿搭	Save Outfit
+保存并登记	Save and Log Wear
+保存草稿并退出	Save Draft and Exit
+仅保存穿搭	Save Outfit Only
+完成	Done
+完成添加	Add Item
+完成护理	Care Complete
+完成护理检查	Complete Care Check
+完成护理	Finish Care
+取消	Cancel
+撤销	Undo
+重做	Redo
+重置	Reset
+确认	Confirm
+确认使用	Use This
+返回	Back
+关闭	Close
+更多	More
+更多操作	More Options
+查看	View
+编辑	Edit
+删除	Delete
+彻底删除	Delete Permanently
+删除衣物	Delete Item
+删除衣物及照片，无法恢复。	This item and its photos will be permanently deleted.
+删除穿搭	Delete Outfit
+删除所选衣物	Delete Selected Items
+归档	Archive
+归档衣物	Archive Item
+归档并保留历史	Archive and Keep History
+归档衣物	Archive Item
+恢复到衣橱	Return to Wardrobe
+收藏	Favorite
+取消收藏	Remove from Favorites
+只看收藏	Favorites Only
+取消收藏筛选	Show All Favorites
+添加	Add
++ 添加	+ Add
++ 新建	+ New
++ 添加照片	+ Add Photo
+添加照片	Add Photo
+添加单品	Add Item
+添加衣物	Add Item
+录入单品	Add Item
+从衣橱选单品	Choose from Wardrobe
+从衣橱添加单品	Add from Wardrobe
+选择单品	Select Items
+选择穿着单品	Select Worn Items
+选择穿搭	Choose Outfit
+替换单品	Replace Item
+替换	Replace
+移除	Remove
+已加入	Added
++ 加入画布	+ Add to Canvas
+打开画布	Open Canvas
+编辑穿搭	Edit Outfit
+穿搭名称	Outfit Name
+未命名穿搭	Untitled Outfit
+暂无穿搭	No Outfits Yet
+灵感穿搭	Outfit Ideas
+随机搭配	Shuffle Outfit
+搭配	Style
+保存草稿并退出	Save Draft and Exit
+退出编辑	Exit Editor
+放弃未保存修改？	Discard unsaved changes?
+放弃修改	Discard Changes
+未保存的内容将丢失。	Your unsaved changes will be lost.
+应用	Apply
+应用筛选	Apply Filters
+清除筛选	Clear Filters
+筛选	Filter
+筛选衣橱	Filter Wardrobe
+调整筛选	Adjust Filters
+搜索名称或品牌	Search by name or brand
+场景	Occasion
+自定义场景	Custom Occasion
+全部场景	All Occasions
+休闲	Casual
+工作	Work
+运动	Sport
+派对	Party
+其他	Other
+类别 *	Category *
+名称 *	Name *
+选择类别	Select Category
+季节	Season
+适用季节	Season
+季节未标注	No season selected
+四季适用	All Seasons
+春	Spring
+夏	Summer
+秋	Autumn
+冬	Winter
+上衣	Top
+上装	Tops
+下装	Bottoms
+T 恤	T-Shirt
+T恤	T-Shirt
+衬衫	Shirt
+针织衫	Knitwear
+背心	Tank Top
+吊带	Camisole
+外套	Outerwear
+风衣	Trench Coat
+西装	Blazer
+夹克	Jacket
+短裤	Shorts
+长裤	Trousers
+牛仔裤	Jeans
+工装裤	Cargo Trousers
+半裙	Skirt
+连衣裙	Dress
+鞋子	Shoes
+鞋	Shoes
+配饰	Accessories
+颜色	Color
+颜色名称	Color Name
+主色	Primary Color
+设为主色	Set as Primary Color
+设为基准色	Set Base Color
+设置基准色	Set Base Color
+选择基准色	Choose Base Color
+从照片取色	Pick Color from Photo
+衣橱圆盘色盘，下方也可按颜色名称选择	Wardrobe color wheel. You can also choose a color by name below.
+全部颜色	All Colors
+清除颜色	Clear Color
+添加颜色	Add Color
+删除颜色 	Remove Color{space}
+编辑颜色	Edit Color
+配色建议	Color Suggestions
+同色系	Tonal
+邻近色	Analogous
+互补色	Complementary
+中性百搭	Versatile Neutrals
+同色呼应	Color Echo
+大地色	Earth Tones
+中性色	Neutrals
+柔和	Soft
+亮度	Brightness
+明度	Brightness
+饱和度	Saturation
+色相	Hue
+占比	Proportion
+备注	Notes
+品牌	Brand
+材质	Material
+衣物照片	Item Photo
+更换照片	Change Photo
+拍照	Take Photo
+拍照 / 选图	Take or Choose Photo
+相册	Photo Library
+手动建档	Add Manually
+网购导入	Import from Shopping Site
+批量导入	Import Multiple Photos
+开始导入	Start Import
+导入结果	Import Results
+导入链接	Import Link
+导入网购截图	Import Shopping Screenshot
+图片链接导入	Import from Image URL
+商品截图	Product Screenshot
+商品图片	Product Image
+商品原文	Original Listing Text
+打开商品页	Open Product Page
+用图片地址	Use Image URL
+粘贴淘宝分享内容或商品链接	Paste a Taobao link or shared listing
+粘贴商品图片链接	Paste product image URL
+预览图片	Preview Image
+使用此图	Use This Image
+使用此色	Use This Color
+使用选区	Use Selection
+取消全选	Deselect All
+全选	Select All
+选择类别	Choose Category
+选择基准色	Choose Base Color
+查看日期	Choose Date
+上个月	Previous Month
+下个月	Next Month
+上一步	Back
+下一步	Next
+下一张	Next Photo
+跳过	Skip
+开始使用	Get Started
+知道了	Got It
+衣橱暂无单品	Your wardrobe is empty
+衣橱暂无衣物	Your wardrobe is empty
+暂无衣物	No Items Yet
+暂无衣物照片	No Item Photo Yet
+暂无关联穿搭	No Linked Outfits
+暂无归档	No Archived Items
+暂无处理图	No Edited Image Yet
+暂无可导入的商品图	No product images found
+暂无颜色	No Colors Yet
+暂无颜色记录	No Color Data Yet
+暂无文字	No Text Found
+暂无	None Yet
+无匹配单品	No matching items
+添加单品后即可登记穿着。	Add an item to start logging what you wear.
+点击单品进入详情，可随时修改色彩比例、材质与洗标。	Open any item to edit its colors, material, and care label.
+拍摄或导入衣物图片，自动抠图并建立专属数字档案。	Photograph or import your clothes to create a digital wardrobe with automatic background removal.
+按水洗标自动归类待洗衣物，实时追踪衣橱洁净状态。	Organize laundry by care label and keep track of what's ready to wear.
+自由组合单品构建造型，沉淀你的日常搭配方案。	Combine items into outfits and save looks you love to wear.
+结合当地气温与收纳时长，一键筛选需过水或唤醒的当季衣物。	Use local weather and storage time to find seasonal clothes that need a refresh.
+换季唤醒	Seasonal Refresh
+换季整理	Seasonal Wardrobe
+换季检查完成	Seasonal Check Complete
+本季度关闭换季提醒	Mute Seasonal Reminders This Season
+一键唤醒	Refresh Items
+待唤醒	Needs a Refresh
+取出衣物	Take Out of Storage
+收起衣物	Put Away
+久置 	Stored{space}
+已唤醒 	Refreshed{space}
+已取出	Taken Out
+已收起	Put Away
+已记录换季检查	Seasonal check recorded
+季节未标注	Season Not Set
+设为当前季节	Set as Current Season
+恢复自动季节	Use Automatic Season
+恢复自动	Use Automatic
+当前手动季节：	Manual season:{space}
+季暂无适用衣物	No items for this season
+调整季节	Adjust Season
+设置季节	Set Season
+季节	Season
+低温	Low Heat
+中温	Medium Heat
+高温	High Heat
+低温滚筒烘干	Tumble Dry Low
+中温滚筒烘干	Tumble Dry Medium
+高温滚筒烘干	Tumble Dry High
+常温滚筒烘干	Tumble Dry, No Heat
+不可滚筒烘干	Do Not Tumble Dry
+平铺晾干	Dry Flat
+悬挂晾干	Hang to Dry
+滴水平铺晾干	Drip Dry Flat
+滴水悬挂晾干	Drip Dry on a Line
+阴凉处平铺晾干	Dry Flat in Shade
+阴凉处悬挂晾干	Hang to Dry in Shade
+阴凉处滴水平铺晾干	Drip Dry Flat in Shade
+阴凉处滴水悬挂晾干	Drip Dry on a Line in Shade
+手洗	Hand Wash
+柔洗	Gentle Cycle
+不可水洗	Do Not Wash
+可漂白	Bleach Allowed
+不可漂白	Do Not Bleach
+仅氧漂	Non-Chlorine Bleach Only
+不可熨烫	Do Not Iron
+低温熨烫 · 一点	Iron Low · One Dot
+中温熨烫 · 两点	Iron Medium · Two Dots
+高温熨烫 · 三点	Iron High · Three Dots
+不可干洗	Do Not Dry Clean
+不可专业湿洗	Do Not Wet Clean
+专业干洗 · A	Professional Dry Clean · A
+专业干洗 · F	Professional Dry Clean · F
+专业干洗 · F 柔和	Professional Dry Clean · F, Gentle
+专业干洗 · P	Professional Dry Clean · P
+专业干洗 · P 柔和	Professional Dry Clean · P, Gentle
+专业湿洗 · W	Professional Wet Clean · W
+专业湿洗 · W 柔和	Professional Wet Clean · W, Gentle
+专业湿洗 · W 极柔和	Professional Wet Clean · W, Very Gentle
+专业护理	Professional Care
+核对结果	Review Results
+未检出符号	No Symbols Detected
+符号识别失败	Could Not Recognize Symbols
+识别洗标中…	Reading Care Label…
+扫描中	Scanning…
+相机未授权	Camera Access Not Granted
+相机未授权 / 请从相册导入	Camera access unavailable. Choose a photo instead.
+相机不可用 / 请从相册导入	Camera unavailable. Choose a photo instead.
+相机预览，点按对焦	Camera preview. Tap to focus.
+无法保留画面	Could Not Capture Image
+当前镜头不支持对焦	Focus is unavailable on this camera
+未能合焦 / 稍微拉远	Could not focus. Move back slightly.
+已对焦	Focused
+对焦中	Focusing…
+补光	Flash
+关补光	Turn Off Flash
+打开相机中…	Opening Camera…
+读取画面中…	Reading Image…
+读取图片中…	Loading Image…
+读取文字中…	Reading Text…
+下载图片中…	Downloading Image…
+识别中…	Analyzing…
+解析链接中…	Reading Link…
+导入中  	Importing{space}
+保存中…	Saving…
+删除中…	Deleting…
+正在整理衣橱…	Organizing Your Wardrobe…
+重试中…	Trying Again…
+操作未完成 / 请重试或手动填写	Could not complete this action. Try again or enter the details manually.
+图片读取失败 / 请返回或换一张	Could not read this image. Go back or choose another.
+图片写入失败	Could not save image
+请按洗标护理	Follow the care label
+请扩大选区	Make the selection larger
+请涂抹保留区域	Mark the area to keep
+请先重新识别原图，再用笔刷补全。	Reanalyze the original photo, then use the brush to restore any missing details.
+涂抹保留区域	Paint the Area to Keep
+涂抹补回袖口、衣摆等区域	Brush over missing cuffs, hems, and other details.
+在原图上涂抹保留区域	Paint over the area to keep in the original photo
+处理图预览	Edited Image Preview
+处理图封面	Edited Image Cover
+原图封面	Original Image Cover
+查看处理图	View Edited Image
+查看原图	View Original Photo
+看处理图	View Edited Image
+看原图	View Original Photo
+切换原图与封面	Switch Between Original and Cover
+照片取色，点按或拖动选择颜色	Pick a color from the photo by tapping or dragging.
+点按或拖动照片	Tap or drag on the photo
+拖动框选衣物	Drag to select the item
+框选衣物	Select Item
+框选商品	Select Product
+框选识别	Analyze Selection
+框选重试	Select Again
+修图	Edit Photo
+修图菜单	Photo Editing
+保留笔刷	Restore Brush
+笔刷大小	Brush Size
+重新识别	Analyze Again
+重新识别照片	Analyze Photo Again
+只提取文字	Extract Text Only
+识别整张截图	Analyze Entire Screenshot
+未识别到文字	No text found
+找不到原图	Original photo unavailable
+无法打开图片来源	Could not open image source
+无法创建照片目录	Could not create photo folder
+无法打开淘宝网页	Could not open Taobao page
+请先打开商品详情	Open the product page first
+请在浏览器打开商品	Open the product in your browser
+请在浏览器打开商品，复制图片地址导入。	Open the product in your browser and copy its image URL to import it.
+在浏览器打开商品主图，复制图片地址后粘贴。	Open the main product image in your browser, then copy and paste its URL.
+登录后等待商品图加载。	Sign in and wait for the product image to load.
+等待主图加载，或长按图片导入。也可使用图片地址。	Wait for the main image, then press and hold it to import. You can also paste an image URL.
+请粘贴淘宝链接或分享内容	Paste a Taobao link or shared listing
+请粘贴完整图片链接	Paste the full image URL
+请至少选择一件单品	Select at least one item
+请填写名称并添加单品	Enter a name and add at least one item
+请填写名称并选择类别	Enter a name and choose a category
+请输入穿搭名称	Enter an outfit name
+请输入次数与天数	Enter both the wash count and number of days
+请输入 0–100 的占比	Enter a value from 0 to 100
+请先添加单品	Add an item first
+请先添加照片	Add a photo first
+请先添加颜色	Add a color first
+请先添加基准色	Add a base color first
+请先取色	Pick a color first
+请粘贴淘宝链接或分享内容	Paste a Taobao link or shared listing
+每套最多 20 件单品	Up to 20 items per outfit
+每张照片添加一件单品。未识别时保留原图，可稍后编辑。	Each photo adds one item. If recognition fails, the original photo is kept for later editing.
+默认 10 次 / 90 天，填 0 关闭	Default: 10 washes or 90 days. Enter 0 to turn off.
+仅补录历史洗涤次数，不影响当前是否待洗	Adds to wash history without changing the item's current laundry status.
+整组已洗	Mark Group as Washed
+已洗	Washed
+已洗涤 	Washed{space}
+已记录今日洗涤	Today's wash recorded
+已补记洗涤	Wash added to history
+已撤销洗涤记录	Wash record undone
+已加入待洗	Added to laundry
+已归档 / 历史已保留	Archived · History Kept
+已归档衣物	Item archived
+已记录的穿着历史会保留。	Wear history will be kept.
+衣物已删除	Item deleted
+已添加衣物	Item added
+已完成护理	Care complete
+已在画布中	Already on Canvas
+已移除颜色	Color removed
+已选 0 件	0 selected
+优先处理	Needs Attention
+原文	Original Text
+商品原文	Original Listing Text
+白色	White
+黑色	Black
+灰色	Gray
+米色	Beige
+棕色	Brown
+红色	Red
+橙色	Orange
+黄色	Yellow
+绿色	Green
+青色	Cyan
+蓝色	Blue
+紫色	Purple
+粉色	Pink
+自定义	Custom
+自动命名	Name Automatically
+按当前月份推荐	Suggested for This Month
+本组待洗占比	Share of This Group Needing a Wash
+编辑穿搭。点选并拖动单品，双指缩放和旋转	Edit outfit. Drag items to move them; pinch to resize and rotate.
+编辑符号	Edit Symbol
+补记洗涤	Add Past Wash
+不可	Not Allowed
+不选择	None
+草稿已删除	Draft deleted
+查看待洗	View Laundry
+查看原文	View Original Text
+穿着	Wears
+待整理衣物	Items to Review
+当前画布：	On Canvas:{space}
+档案	Details
+档案与编辑	Details & Editing
+滴水	Drip Dry
+干燥	Drying
+关联穿搭	Linked Outfits
+滚筒	Tumble Dry
+后移	Send Backward
+画布已有	Already on Canvas
+恢复体感	Resume Motion Styling
+基准色：	Base Color:{space}
+记录	History
+继续编辑	Continue Editing
+检查结果	Check Result
+解锁	Unlock
+可多选 / 留空则不标注	Select multiple, or leave blank if unknown
+批量导入	Import Multiple
+漂白	Bleaching
+平铺	Dry Flat
+前移	Bring Forward
+切换预览	Switch Preview
+切换至两件模式	Use Two Items
+切换至三件模式	Use Three Items
+请先添加	Add an item first
+去衣橱	Open Wardrobe
+去整理	Review Items
+设置封面	Set as Cover
+湿洗	Wet Cleaning
+使用指南	How It Works
+刷新天气	Refresh Weather
+添加后可查看记录	Records will appear here once added
+为空	Empty
+未标注	Not Added
+未确认	Unconfirmed
+未添加	Not Added
+校准	Calibrate
+修改	Change
+悬挂	Hang to Dry
+选截图	Choose Screenshot
+选商品图	Choose Product Image
+氧漂	Non-Chlorine Bleach
+要求	Instructions
+阴凉	In Shade
+熨烫	Iron
+暂停体感	Pause Motion Styling
+粘贴淘宝链接，或选择商品截图。	Paste a Taobao link or choose a product screenshot.
+找颜色搭配	Find Color Matches
+最高 20°C	Wash at 20°C Maximum
+最高 30°C	Wash at 30°C Maximum
+最高 30°C · 柔洗	Wash at 30°C Maximum · Gentle Cycle
+最高 30°C · 极柔洗	Wash at 30°C Maximum · Very Gentle Cycle
+最高 40°C	Wash at 40°C Maximum
+最高 40°C · 柔洗	Wash at 40°C Maximum · Gentle Cycle
+最高 40°C · 极柔洗	Wash at 40°C Maximum · Very Gentle Cycle
+最高 50°C	Wash at 50°C Maximum
+最高 60°C	Wash at 60°C Maximum
+最高 60°C · 柔洗	Wash at 60°C Maximum · Gentle Cycle
+最高 70°C	Wash at 70°C Maximum
+最高 95°C	Wash at 95°C Maximum
+起球、变形或褪色	Pilling, stretching, or fading
+起球和变形	Pilling and stretching
+褪色和变形	Fading and stretching
+未检出符号	No Symbols Detected
+周一	Monday
+周二	Tuesday
+周三	Wednesday
+周四	Thursday
+周五	Friday
+周六	Saturday
+周日	Sunday
+衣	Item
+0 件单品	0 Items
+查看待洗	View Laundry
+待洗  	Needs Washing
+待唤醒  	Needs a Refresh
+洁净就绪  	Clean and Ready
+需护理  	Needs Care
+可直接穿  	Ready to Wear
+商品图片  	Product Image
+洗标照片 / 	Care Label Photo /{space}
+穿搭预览 / 	Outfit Preview /{space}
+使用指南 / 	How It Works /{space}
+筛选 / 	Filter /{space}
+扫描中 / 	Scanning /{space}
+编辑颜色  	Edit Color{space}
+删除穿搭  	Delete Outfit{space}
+删除  	Delete{space}
+衣橱 / 	Wardrobe /{space}
+批量导入  	Import Multiple{space}
+已归档  	Archived{space}
+已删除  	Deleted{space}
+已导入  	Imported{space}
+已选  	Selected{space}
+已加入「	Added “
+，当前激活	, active
+，点击激活	, tap to activate
+，可撤销	. Undo available
+，切换变焦	, change zoom
+，未选中	, not selected
+，已选中	, selected
+ 有穿着记录	, wear logged
+ 个候选框	possible symbols
+ 候选	possible matches
+ 件待洗	 items need washing
+ 件单品	 items
+ 件衣物	 items
+ 件	 items
+ 套穿搭	 outfits
+ 张照片	 photos
+ 天	 days
+ 次 / 	 times /{space}
+ 每	 Every
+ 次 / 检查	 washes / check{space}
+ 件 / 	 items /{space}
+ 件 / 历史已保留	 items / history kept
+ 件久置待唤醒，建议整理	 items have been stored for a while. Review them now.
+ 件衣物 / 	 items /{space}
+ 件衣物标为待洗	 items marked for washing
+ 套穿搭 / 	 outfits /{space}
+ 天未使用 / 检查通风与除尘	 days without wear. Check for dust and air them out.
+ 有候选	 possible matches
+ 张	 photos
+ 张保留原图	 original photos kept
+ 张照片…	 photos…
+ 直接穿	 Wear Now
+\n商品：	\nProduct:{space}
+\n未导入：	\nCould not import:{space}
+关联  	Linked{space}
+季设为当前季节	 season as current season
+季衣橱待唤醒：	 wardrobe needs a refresh:
+继续编辑 / 	Continue Editing /{space}
+将	Set{space}
+每  	Every{space}
+气温降至 %.0f°C  	Temperature down to %.0f°C{space}
+已关闭	Off
+已归档	Archived
+锁定	Lock
+最高 20°C	Wash at 20°C Maximum
+编辑颜色  	Edit Color{space}
+年 	Year{space}
+月	Month
+日	Day
+一	Mon
+二	Tue
+三	Wed
+四	Thu
+五	Fri
+六	Sat
